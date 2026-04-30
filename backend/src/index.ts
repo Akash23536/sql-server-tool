@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import sql from 'mssql';
-import { Console } from 'console';
+import path from 'path';
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -425,6 +425,15 @@ app.post('/api/disconnect', async (req, res) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
+});
+
+// Serve static files from the React app
+const frontendPath = path.join(__dirname, '../../frontend/vite-project/dist');
+app.use(express.static(frontendPath));
+
+// The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 app.listen(PORT, () => {

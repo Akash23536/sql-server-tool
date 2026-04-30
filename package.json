@@ -1,0 +1,11 @@
+{
+  "name": "sql-server-tool-root",
+  "version": "1.0.0",
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../frontend/vite-project && npm install",
+    "build": "cd frontend/vite-project && npm install && npm run build",
+    "start": "cd backend && npm install && npm start",
+    "render-build": "npm install && cd frontend/vite-project && npm install && npm run build && cd ../../backend && npm install",
+    "render-start": "cd backend && npm start"
+  }
+}
