@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+frontend/vite-project/node_modules/
+frontend/vite-project/dist/
+backend/node_modules/
