@@ -332,7 +332,7 @@ app.get('/api/script', async (req, res) => {
       } else if (type === 'PROCEDURE') {
         const result = await pool!.query(`EXEC sp_helptext '${objName}'`);
         return result.recordset.map((row: any) => row.Text).join('');
-      } else if (type === 'FUNCTION') {
+      } else if (type.includes('FUNCTION')) {
         const result = await pool!.query(`EXEC sp_helptext '${objName}'`);
         return result.recordset.map((row: any) => row.Text).join('');
       }
