@@ -236,15 +236,6 @@ function App() {
     }
   };
 
-  // Handle page size change
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setCurrentPage(1);
-    setObjectHasMore(false);
-    if (selectedDatabase) {
-      loadObjects(selectedDatabase, objectFilter, 1, size, searchTerm);
-    }
-  };
 
   // Handle search
   const handleSearch = (term: string) => {
