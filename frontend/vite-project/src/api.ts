@@ -61,20 +61,9 @@ export const OBJECT_TYPE_OPTIONS: { value: ObjectTypeFilter; label: string }[] =
   { value: 'synonyms', label: 'Synonyms' },
 ];
 
-// Page size options
-export const PAGE_SIZE_OPTIONS = [
-  { value: 10, label: '10' },
-  { value: 20, label: '20' },
-];
-
 // Connect to SQL Server
 export const connectToServer = async (config: ConnectionConfig, signal?: AbortSignal): Promise<{ success: boolean; error?: string }> => {
   try {
-    // Create a timeout that will abort the request after 15 seconds
-    const timeoutId = setTimeout(() => {
-      signal?.abort();
-    }, 15000);
-
     const response = await fetch(`${API_BASE}/connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -82,7 +71,6 @@ export const connectToServer = async (config: ConnectionConfig, signal?: AbortSi
       signal,
     });
     
-    clearTimeout(timeoutId);
     const data = await response.json();
     return data;
   } catch (error: any) {

@@ -1,7 +1,7 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './ObjectBrowser.css';
 import type { Database, ObjectCounts } from '../api';
-import { OBJECT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, getObjectCounts } from '../api';
+import { OBJECT_TYPE_OPTIONS, getObjectCounts } from '../api';
 import type { ObjectTypeFilter } from '../api';
 
 interface DbObject {
@@ -25,8 +25,6 @@ interface ObjectBrowserProps {
   hasMore: boolean;
   isLoading: boolean;
   onLoadMore: () => void;
-  pageSize: number;
-  onPageSizeChange: (size: number) => void;
   totalObjects: number;
   onSearch: (term: string) => void;
   searchTerm: string;
@@ -45,8 +43,6 @@ export function ObjectBrowser({
   hasMore,
   isLoading,
   onLoadMore,
-  pageSize,
-  onPageSizeChange,
   totalObjects,
   onSearch,
   searchTerm,
@@ -178,11 +174,6 @@ export function ObjectBrowser({
   // Handle dropdown change
   const handleObjectTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onObjectTypeFilter(e.target.value as ObjectTypeFilter);
-  };
-
-  // Handle page size change
-  const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    onPageSizeChange(parseInt(e.target.value));
   };
 
   return (
