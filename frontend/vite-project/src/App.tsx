@@ -388,8 +388,6 @@ function App() {
               hasMore={objectHasMore}
               isLoading={isLoadingObjects}
               onLoadMore={loadMoreObjects}
-              pageSize={pageSize}
-              onPageSizeChange={handlePageSizeChange}
               totalObjects={objectTotal}
               onSearch={handleSearch}
               searchTerm={searchTerm}
