@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import type { Database, ObjectCounts } from '../api';
-import { OBJECT_TYPE_OPTIONS, getObjectCounts } from '../api';
+import type { Database } from '../api';
+import { OBJECT_TYPE_OPTIONS } from '../api';
 import type { ObjectTypeFilter } from '../api';
 
 interface DbObject {
