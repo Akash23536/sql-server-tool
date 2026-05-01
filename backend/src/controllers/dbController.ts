@@ -343,10 +343,10 @@ export const executeQuery = async (req: Request, res: Response) => {
     // Using request().query() to ensure all recordsets are returned
     const result = await pool.request().query(query);
     
-    const results = (result.recordsets || []).map(rs => ({
-      columns: rs.length > 0 ? Object.keys(rs[0]) : [],
+    const results = ((result.recordsets as any) || []).map((rs: any) => ({
+      columns: rs && rs.length > 0 ? Object.keys(rs[0]) : [],
       rows: rs,
-      rowCount: rs.length
+      rowCount: rs ? rs.length : 0
     }));
 
     res.json({
