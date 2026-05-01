@@ -36,8 +36,6 @@ export function ResultsGrid({ result, error }: ResultsGridProps) {
     );
   }
 
-  const hasData = result.results.some(rs => rs.recordset && rs.recordset.length > 0);
-
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden border-t border-gray-300 dark:border-gray-800">
       <div className="flex-1 overflow-auto bg-gray-100 dark:bg-[#121212]">

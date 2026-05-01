@@ -59,8 +59,8 @@ export function QueryEditor({
     }
     if (e.key === 'Tab') {
       e.preventDefault();
-      const start = e.currentTarget.selectionStart;
-      const end = e.currentTarget.selectionEnd;
+      const start = (e.currentTarget as HTMLTextAreaElement).selectionStart;
+      const end = (e.currentTarget as HTMLTextAreaElement).selectionEnd;
       const newValue = query.substring(0, start) + '    ' + query.substring(end);
       onQueryChange(newValue);
       setTimeout(() => {

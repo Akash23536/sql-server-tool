@@ -49,7 +49,6 @@ export function ObjectBrowser({
   searchTerm,
   isAdvancedSearch,
   onToggleAdvancedSearch,
-  isOffline = false,
 }: ObjectBrowserProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -59,16 +58,6 @@ export function ObjectBrowser({
       return JSON.parse(localStorage.getItem('searchHistory') || '[]');
     } catch { return []; }
   });
-  const [objectCounts, setObjectCounts] = useState<ObjectCounts | null>(null);
-
-  useEffect(() => {
-    if (selectedDatabase) {
-      getObjectCounts(selectedDatabase).then(setObjectCounts).catch(console.error);
-    } else {
-      setObjectCounts(null);
-    }
-  }, [selectedDatabase]);
-
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
