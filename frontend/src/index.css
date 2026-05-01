@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  /* SSMS Inspired Design System */
+  --color-ssms-header: #dee1e6;
+  --color-ssms-sidebar: #f0f0f0;
+  --color-ssms-border: #ced4da;
+  --color-ssms-active: #c9d1d9;
+  --color-ssms-primary: #0078d4;
+  --color-ssms-toolbar: #f5f5f5;
+
+  --color-ssms-dark-header: #2d2d2d;
+  --color-ssms-dark-sidebar: #252526;
+  --color-ssms-dark-border: #3c3c3c;
+  --color-ssms-dark-active: #37373d;
+}
+
+:root {
+  --bg-main: #ffffff;
+  --text-main: #1e1e1e;
+}
+
+[data-theme='dark'] {
+  --bg-main: #1e1e1e;
+  --text-main: #ffffff;
+}
+
+body {
+  @apply bg-white text-gray-900 font-sans antialiased;
+}
+
+[data-theme='dark'] body {
+  @apply bg-[#1e1e1e] text-gray-100;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  @apply bg-gray-600;
+}
+
+/* Custom SSMS Components */
+.ssms-panel {
+  @apply bg-ssms-sidebar border-ssms-border;
+}
+
+[data-theme='dark'] .ssms-panel {
+  @apply bg-ssms-dark-sidebar border-ssms-dark-border;
+}

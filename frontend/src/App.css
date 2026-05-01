@@ -1,0 +1,42 @@
+@reference "./index.css";
+
+/* 
+  Global Layout Variables 
+  These supplement Tailwind for specific resizable panel behaviors 
+*/
+
+:root {
+  --ssms-header-height: 32px;
+}
+
+.app {
+  @apply h-screen overflow-hidden flex flex-col bg-white dark:bg-[#1e1e1e];
+}
+
+.app-content {
+  @apply flex-1 overflow-hidden;
+}
+
+/* Panel Handles */
+.resize-handle-horizontal {
+  @apply w-1 bg-gray-300 dark:bg-[#3c3c3c] hover:bg-blue-500 cursor-col-resize transition-colors;
+}
+
+.resize-handle-vertical {
+  @apply h-1 bg-gray-300 dark:bg-[#3c3c3c] hover:bg-blue-500 cursor-row-resize transition-colors;
+}
+
+/* Scrollbar Overrides */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+[data-theme='dark'] * {
+  scrollbar-color: #475569 transparent;
+}
+
+/* Ensure images/emojis in SSMS panels look right */
+.ssms-icon {
+  @apply flex items-center justify-center;
+}

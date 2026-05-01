@@ -75,12 +75,12 @@ function App() {
 
   // Database state
   const [databases, setDatabases] = useState<Database[]>([]);
-  const [selectedDatabase, setSelectedDatabase] = useState('');
+  const [selectedDatabase, setSelectedDatabase] = useState(() => localStorage.getItem('sql_lastDb') || '');
 
   // Object state
   const [objects, setObjects] = useState<DbObject[]>([]);
   const [selectedObject, setSelectedObject] = useState<DbObject | null>(null);
-  const [objectFilter, setObjectFilter] = useState<ObjectTypeFilter>('all');
+  const [objectFilter, setObjectFilter] = useState<ObjectTypeFilter>(() => (localStorage.getItem('sql_lastFilter') as ObjectTypeFilter) || 'all');
   const [objectScript, setObjectScript] = useState<string | null>(null);
   
   // Pagination state
@@ -89,12 +89,28 @@ function App() {
   const [objectTotal, setObjectTotal] = useState(0);
   const [objectHasMore, setObjectHasMore] = useState(false);
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('sql_lastSearch') || '');
+  const [isAdvancedSearch, setIsAdvancedSearch] = useState(false);
 
   // Query state
+  const [query, setQuery] = useState(() => localStorage.getItem('sql_lastQuery') || '');
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [queryController, setQueryController] = useState<AbortController | null>(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  // Persistence Effects
+  useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
+  useEffect(() => { localStorage.setItem('sql_lastFilter', objectFilter); }, [objectFilter]);
+  useEffect(() => { localStorage.setItem('sql_lastSearch', searchTerm); }, [searchTerm]);
+  useEffect(() => { localStorage.setItem('sql_lastQuery', query); }, [query]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Handle connection
   const handleConnect = async (server: string, port: number, username: string, password: string) => {
@@ -106,9 +122,7 @@ function App() {
 
     // Auto-cancel after 15 seconds timeout
     const timeoutId = setTimeout(() => {
-      if (connectionController) {
-        controller.abort();
-      }
+      controller.abort();
     }, 15000);
 
     try {
@@ -230,20 +244,41 @@ function App() {
     setCurrentPage(1);
     setObjectTotal(0);
     setObjectHasMore(false);
-    setSearchTerm('');
+    
     if (selectedDatabase) {
-      loadObjects(selectedDatabase, type, 1, pageSize, '');
+      if (isAdvancedSearch && searchTerm.trim()) {
+        handleSearch(searchTerm, type);
+      } else {
+        loadObjects(selectedDatabase, type, 1, pageSize, searchTerm);
+      }
     }
   };
 
 
   // Handle search
-  const handleSearch = (term: string) => {
+  const handleSearch = async (term: string, typeOverride?: ObjectTypeFilter) => {
     setSearchTerm(term);
     setCurrentPage(1);
     setObjectHasMore(false);
+
     if (selectedDatabase) {
-      loadObjects(selectedDatabase, objectFilter, 1, pageSize, term);
+      if (isAdvancedSearch && term.trim()) {
+        const filterToUse = typeOverride || objectFilter;
+        setIsLoadingObjects(true);
+        setObjects([]);
+        try {
+          const results = await searchScripts(selectedDatabase, term, filterToUse);
+          setObjects(results);
+          setObjectTotal(results.length);
+        } catch (error: any) {
+          console.error(error);
+          setObjects([]);
+        } finally {
+          setIsLoadingObjects(false);
+        }
+      } else {
+        loadObjects(selectedDatabase, objectFilter, 1, pageSize, term);
+      }
     }
   };
 
@@ -275,17 +310,35 @@ function App() {
       return;
     }
 
+    const controller = new AbortController();
+    setQueryController(controller);
     setIsExecuting(true);
     setQueryError(null);
     setQueryResult(null);
 
     try {
-      const result = await executeQuery(selectedDatabase, queryText);
+      const result = await executeQuery(selectedDatabase, queryText, controller.signal);
       setQueryResult(result);
     } catch (error: any) {
-      setQueryError(error.message);
+      if (error.name === 'AbortError') {
+        setQueryError('Query cancelled');
+      } else {
+        setQueryError(error.message);
+      }
+    } finally {
+      setIsExecuting(false);
+      setQueryController(null);
     }
-    setIsExecuting(false);
+  };
+
+  // Cancel query execution
+  const handleCancelQuery = () => {
+    if (queryController) {
+      queryController.abort();
+      setQueryController(null);
+      setIsExecuting(false);
+      setQueryError('Query cancelled');
+    }
   };
 
   // Handle disconnect
@@ -306,18 +359,12 @@ function App() {
   // Show a full-screen loader while silently reconnecting
   if (isAutoReconnecting) {
     return (
-      <div className="app">
-        <div className="app-header">
-          <h1>SQL Server Tool</h1>
-          <button className="theme-toggle" onClick={() => setIsDarkTheme(!isDarkTheme)}>
-            {isDarkTheme ? '☀️ Light' : '🌙 Dark'}
-          </button>
-        </div>
-        <div className="reconnect-screen">
-          <div className="reconnect-card">
-            <div className="reconnect-spinner"></div>
-            <h2>Reconnecting…</h2>
-            <p>Restoring your session, please wait.</p>
+      <div className="app flex items-center justify-center bg-slate-200 dark:bg-slate-900">
+        <div className="bg-[#f0f0f0] dark:bg-[#252526] p-10 border border-gray-300 dark:border-gray-700 shadow-2xl rounded-sm flex flex-col items-center gap-6">
+          <div className="w-12 h-12 border-4 border-[#0078d4]/20 border-t-[#0078d4] rounded-full animate-spin"></div>
+          <div className="text-center">
+            <h2 className="text-sm font-extrabold text-gray-700 dark:text-gray-200 uppercase tracking-widest">Reconnecting…</h2>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase mt-2">Restoring your session</p>
           </div>
         </div>
       </div>
@@ -326,13 +373,7 @@ function App() {
 
   if (!isConnected) {
     return (
-      <div className="app">
-        <div className="app-header">
-          <h1>SQL Server Tool</h1>
-          <button className="theme-toggle" onClick={() => setIsDarkTheme(!isDarkTheme)}>
-            {isDarkTheme ? '☀️ Light' : '🌙 Dark'}
-          </button>
-        </div>
+      <div className="app bg-slate-200 dark:bg-slate-900">
         <ConnectionForm
           onConnect={handleConnect}
           onCancel={handleCancel}
@@ -344,27 +385,38 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <div className="app-header">
-        <h1>SQL Server Tool</h1>
-        <div className="header-actions">
-          <button className="theme-toggle" onClick={() => setIsDarkTheme(!isDarkTheme)}>
-            {isDarkTheme ? '☀️ Light' : '🌙 Dark'}
-          </button>
-          <div className="connection-info">
-            <div className="connection-status">
-              <span className={`status-dot ${connectionError ? 'error' : ''}`}></span>
-              <span>{connectionConfig?.server}<span className="connection-port">:{connectionConfig?.port}</span></span>
-            </div>
-          <button className="disconnect-btn" onClick={handleDisconnect}>
+    <div className={`app h-screen flex flex-col ${isDarkTheme ? 'dark' : ''}`} data-theme={isDarkTheme ? 'dark' : 'light'}>
+      {/* SSMS Style Toolbar Header */}
+      {/* SSMS Style Toolbar Header */}
+      <div className="flex items-center justify-between px-3 py-1 bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c] text-sm shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-2 py-0.5 bg-black/5 dark:bg-white/5 rounded border border-gray-400/20">
+            <div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'} animate-pulse`}></div>
+            <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300 tracking-tight">
+              {connectionConfig?.server}:{connectionConfig?.port}
+            </span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">User:</span>
+            <span className="text-[11px] font-extrabold text-[#0078d4] dark:text-[#3a96dd]">
+              {connectionConfig?.username?.toUpperCase()}
+            </span>
+          </div>
+          
+          <button 
+            onClick={handleDisconnect}
+            className="px-4 py-1 text-[11px] font-black text-white bg-[#0078d4] hover:bg-[#005a9e] rounded shadow-sm transition-all uppercase tracking-tighter"
+          >
             Disconnect
           </button>
-        </div>
         </div>
       </div>
 
       <div className="app-content">
-        <PanelGroup orientation="horizontal">
+        <PanelGroup orientation={isMobile ? "vertical" : "horizontal"}>
           <Panel defaultSize={25} minSize={15}>
             <ObjectBrowser
               databases={databases}
@@ -382,18 +434,24 @@ function App() {
               totalObjects={objectTotal}
               onSearch={handleSearch}
               searchTerm={searchTerm}
+              isAdvancedSearch={isAdvancedSearch}
+              onToggleAdvancedSearch={setIsAdvancedSearch}
             />
           </Panel>
-          <PanelResizeHandle className="resize-handle-horizontal" />
+          <PanelResizeHandle className={isMobile ? "resize-handle-vertical" : "resize-handle-horizontal"} />
           <Panel defaultSize={75} minSize={30}>
             <div className="main-panel" style={{ height: '100%', width: '100%' }}>
               <PanelGroup orientation="vertical">
                 <Panel defaultSize={60} minSize={20}>
                   <QueryEditor
                     onExecute={handleExecuteQuery}
+                    onCancel={handleCancelQuery}
                     isExecuting={isExecuting}
                     script={objectScript}
                     isOffline={isOffline}
+                    highlightTerm={isAdvancedSearch ? searchTerm : undefined}
+                    query={query}
+                    onQueryChange={setQuery}
                   />
                 </Panel>
                 <PanelResizeHandle className="resize-handle-vertical" />

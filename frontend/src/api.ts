@@ -7,10 +7,14 @@ export interface ConnectionConfig {
   password: string;
 }
 
-export interface QueryResult {
+export interface QueryResultSet {
   columns: string[];
   rows: any[];
   rowCount: number;
+}
+
+export interface QueryResult {
+  results: QueryResultSet[];
   message: string;
 }
 
@@ -152,12 +156,24 @@ export const getObjectScript = async (database: string, objectName: string, obje
   return data.script;
 };
 
+// Search in scripts
+export const searchScripts = async (database: string, searchTerm: string, objectType: string = 'all'): Promise<DbObject[]> => {
+  const params = new URLSearchParams({ database, searchTerm, type: objectType });
+  const response = await fetch(`${API_BASE}/search-scripts?${params}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to search scripts');
+  }
+  return response.json();
+};
+
 // Execute query
-export const executeQuery = async (database: string, query: string): Promise<QueryResult> => {
+export const executeQuery = async (database: string, query: string, signal?: AbortSignal): Promise<QueryResult> => {
   const response = await fetch(`${API_BASE}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ database, query }),
+    signal,
   });
   
   if (!response.ok) {
