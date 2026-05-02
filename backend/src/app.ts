@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import dbRoutes from './routes/dbRoutes';
+import aiRoutes from './routes/aiRoutes';
 
 const app = express();
 
@@ -11,6 +12,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api', dbRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Static Files
 const frontendPath = path.join(__dirname, '../../frontend/dist');

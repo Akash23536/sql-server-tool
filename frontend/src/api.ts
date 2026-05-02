@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api';
+const API_BASE = (import.meta.env.VITE_API_URL?.replace(/\/$/, '') || (import.meta.env.DEV ? 'http://localhost:5000' : '')) + '/api';
 
 export interface ConnectionConfig {
   server: string;
@@ -187,4 +187,21 @@ export const executeQuery = async (database: string, query: string, signal?: Abo
 // Disconnect
 export const disconnect = async (): Promise<void> => {
   await fetch(`${API_BASE}/disconnect`, { method: 'POST' });
+};
+
+// Ask AI
+export const askAI = async (query: string, prompt: string): Promise<{ message: string }> => {
+  // Use the AI specific endpoint
+  const response = await fetch(`${API_BASE}/ai/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, prompt }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'AI request failed');
+  }
+  
+  return response.json();
 };

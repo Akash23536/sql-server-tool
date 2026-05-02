@@ -14,9 +14,35 @@ interface QueryResult {
 interface ResultsGridProps {
   result: QueryResult | null;
   error: string | null;
+  aiResult?: string | null;
 }
 
-export function ResultsGrid({ result, error }: ResultsGridProps) {
+export function ResultsGrid({ result, error, aiResult }: ResultsGridProps) {
+  if (aiResult) {
+    return (
+      <div className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden border-t border-gray-300 dark:border-gray-800">
+        <div className="flex-1 overflow-auto p-6 bg-gray-50 dark:bg-[#121212]">
+          <div className="max-w-4xl mx-auto bg-white dark:bg-[#1e1e1e] border border-[#0078d4]/30 shadow-xl rounded-sm overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 bg-[#eef6ff] dark:bg-[#0078d4]/10 border-b border-[#0078d4]/20">
+              <span className="text-xl">🤖</span>
+              <div>
+                <h3 className="text-xs font-black text-[#0078d4] dark:text-[#3a96dd] uppercase tracking-wider">AI Assistant Response</h3>
+                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Analysis & Suggestions</p>
+              </div>
+            </div>
+            <div className="p-6 font-mono text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed select-text">
+              {aiResult}
+            </div>
+          </div>
+        </div>
+        
+        <div className="px-3 py-1 bg-[#0078d4] text-white flex items-center gap-4 text-[10px] font-bold">
+          <span>AI response received successfully.</span>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-red-500 bg-red-50 dark:bg-red-900/10 border-t border-red-200 dark:border-red-900/50">

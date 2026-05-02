@@ -27,8 +27,6 @@ interface ObjectBrowserProps {
   totalObjects: number;
   onSearch: (term: string, typeOverride?: ObjectTypeFilter) => void;
   searchTerm: string;
-  isAdvancedSearch: boolean;
-  onToggleAdvancedSearch: (val: boolean) => void;
   isOffline?: boolean;
 }
 
@@ -47,8 +45,6 @@ export function ObjectBrowser({
   totalObjects,
   onSearch,
   searchTerm,
-  isAdvancedSearch,
-  onToggleAdvancedSearch,
 }: ObjectBrowserProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -111,9 +107,22 @@ export function ObjectBrowser({
     return () => observerRef.current?.disconnect();
   }, [hasMore, isLoading, onLoadMore]);
 
-  const handleContextMenu = (e: React.MouseEvent, obj: DbObject) => {
+  const handleContextMenu = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent, obj: DbObject) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, obj });
+    let x = 0;
+    let y = 0;
+
+    if ('clientX' in e) {
+      x = e.clientX;
+      y = e.clientY;
+    } else {
+      // Basic touch support if needed
+      const touch = (e as unknown as React.TouchEvent).touches[0];
+      x = touch.clientX;
+      y = touch.clientY;
+    }
+
+    setContextMenu({ x, y, obj });
   };
 
   const handleMenuAction = (action: string) => {
@@ -137,12 +146,12 @@ export function ObjectBrowser({
 
   return (
     <div className="flex flex-col h-full bg-[#f0f0f0] dark:bg-[#252526] border-r border-gray-300 dark:border-[#3c3c3c] overflow-hidden select-none">
-      {/* Header / Toolbar Section */}
-      <div className="p-2 border-b border-gray-300 dark:border-[#3c3c3c] bg-[#dee1e6] dark:bg-[#2d2d2d]">
-        <div className="flex flex-col gap-2">
-          <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Database</label>
-          <select
-            className="w-full text-xs p-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500 dark:text-white"
+      {/* Header Section */}
+      <div className="flex flex-col gap-1 p-2 bg-[#f3f3f3] dark:bg-[#252526] border-b border-gray-300 dark:border-[#3c3c3c]">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest">Database</span>
+          <select 
+            className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 text-[10px] md:text-xs font-bold focus:outline-none focus:border-blue-500 dark:text-white"
             value={selectedDatabase}
             onChange={(e) => onSelectDatabase(e.target.value)}
             disabled={databases.length === 0}
@@ -164,7 +173,7 @@ export function ObjectBrowser({
             ref={inputRef}
             type="text"
             className="w-full text-xs p-1.5 pr-8 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500 dark:text-white"
-            placeholder={isAdvancedSearch ? "Search in script..." : "Search object name..."}
+            placeholder="Search object name..."
             value={localSearchTerm}
             onChange={(e) => setLocalSearchTerm(e.target.value)}
           />
@@ -195,17 +204,6 @@ export function ObjectBrowser({
           )}
         </div>
 
-        <div className="flex items-center justify-between px-1">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="w-3 h-3 accent-blue-600"
-              checked={isAdvancedSearch}
-              onChange={(e) => onToggleAdvancedSearch(e.target.checked)}
-            />
-            <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-tighter">Advanced Search</span>
-          </label>
-        </div>
       </div>
 
       {/* Filter Section */}
@@ -231,11 +229,12 @@ export function ObjectBrowser({
             {objects.map((obj) => (
               <div
                 key={`${obj.objectType}-${obj.objectName}`}
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer text-xs transition-colors ${selectedObject?.objectName === obj.objectName ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100' : 'hover:bg-gray-200 dark:hover:bg-white/5 dark:text-gray-300'}`}
+                className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 cursor-pointer text-[10px] md:text-xs transition-colors ${selectedObject?.objectName === obj.objectName ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100' : 'hover:bg-gray-200 dark:hover:bg-white/5 dark:text-gray-300'}`}
                 onClick={() => onSelectObject(obj, 'highlight')}
+                onDoubleClick={(e) => handleContextMenu(e, obj)}
                 onContextMenu={(e) => handleContextMenu(e, obj)}
               >
-                <span className={`w-5 h-5 flex items-center justify-center text-[8px] font-black rounded border border-gray-300 dark:border-gray-600 ${selectedObject?.objectName === obj.objectName ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>
+                <span className={`w-4 h-4 md:w-5 md:h-5 flex items-center justify-center text-[7px] md:text-[8px] font-black rounded border border-gray-300 dark:border-gray-600 ${selectedObject?.objectName === obj.objectName ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>
                   {getShortType(obj.objectType)}
                 </span>
                 <span className="flex-1 truncate">{obj.schemaName ? `${obj.schemaName}.${obj.objectName}` : obj.objectName}</span>

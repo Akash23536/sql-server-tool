@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import type { ImperativePanelHandle } from 'react-resizable-panels';
+import { useRef, useState, useEffect } from 'react';
 import { ConnectionForm } from './components/ConnectionForm';
 import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
@@ -90,15 +91,18 @@ function App() {
   const [objectHasMore, setObjectHasMore] = useState(false);
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem('sql_lastSearch') || '');
-  const [isAdvancedSearch, setIsAdvancedSearch] = useState(false);
+
 
   // Query state
   const [query, setQuery] = useState(() => localStorage.getItem('sql_lastQuery') || '');
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<string | null>(null);
   const [queryController, setQueryController] = useState<AbortController | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const resultsPanelRef = useRef<ImperativePanelHandle>(null);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -133,8 +137,10 @@ function App() {
       if (result.success) {
         setIsConnected(true);
         setConnectionConfig(config);
+        
         // Save credentials persistently for auto-reconnect
         localStorage.setItem('sqlConnectionConfig', JSON.stringify(config));
+
         // Load databases
         await loadDatabases();
       } else {
@@ -238,11 +244,7 @@ function App() {
     setObjectHasMore(false);
     
     if (selectedDatabase) {
-      if (isAdvancedSearch && searchTerm.trim()) {
-        handleSearch(searchTerm, type);
-      } else {
-        loadObjects(selectedDatabase, type, 1, pageSize, searchTerm);
-      }
+      loadObjects(selectedDatabase, type, 1, pageSize, searchTerm);
     }
   };
 
@@ -254,23 +256,7 @@ function App() {
     setObjectHasMore(false);
 
     if (selectedDatabase) {
-      if (isAdvancedSearch && term.trim()) {
-        const filterToUse = typeOverride || objectFilter;
-        setIsLoadingObjects(true);
-        setObjects([]);
-        try {
-          const results = await searchScripts(selectedDatabase, term, filterToUse);
-          setObjects(results);
-          setObjectTotal(results.length);
-        } catch (error: any) {
-          console.error(error);
-          setObjects([]);
-        } finally {
-          setIsLoadingObjects(false);
-        }
-      } else {
-        loadObjects(selectedDatabase, objectFilter, 1, pageSize, term);
-      }
+      loadObjects(selectedDatabase, objectFilter, 1, pageSize, term);
     }
   };
 
@@ -307,6 +293,12 @@ function App() {
     setIsExecuting(true);
     setQueryError(null);
     setQueryResult(null);
+    setAiResult(null);
+
+    // Auto-expand results panel when executing
+    if (resultsPanelRef.current) {
+      resultsPanelRef.current.expand();
+    }
 
     try {
       const result = await executeQuery(selectedDatabase, queryText, controller.signal);
@@ -336,8 +328,12 @@ function App() {
   // Handle disconnect
   const handleDisconnect = async () => {
     await disconnect();
-    // Only clear on EXPLICIT disconnect - never on errors/reload
     localStorage.removeItem('sqlConnectionConfig');
+    localStorage.removeItem('sql_lastQuery');
+    localStorage.removeItem('sql_lastDb');
+    localStorage.removeItem('sql_lastFilter');
+    localStorage.removeItem('sql_lastSearch');
+    
     setIsConnected(false);
     setConnectionConfig(null);
     setDatabases([]);
@@ -346,6 +342,10 @@ function App() {
     setSelectedObject(null);
     setObjectScript(null);
     setQueryResult(null);
+    setAiResult(null);
+    setQuery('');
+    setSearchTerm('');
+    setObjectFilter('all');
   };
 
   // Show a full-screen loader while silently reconnecting
@@ -407,8 +407,10 @@ function App() {
         </div>
       </div>
 
-      <div className="app-content">
+      {/* App Content */}
+      <div className="app-content relative">
         <PanelGroup orientation={isMobile ? "vertical" : "horizontal"}>
+          {/* Object Browser Panel */}
           <Panel defaultSize={25} minSize={15}>
             <ObjectBrowser
               databases={databases}
@@ -426,14 +428,16 @@ function App() {
               totalObjects={objectTotal}
               onSearch={handleSearch}
               searchTerm={searchTerm}
-              isAdvancedSearch={isAdvancedSearch}
-              onToggleAdvancedSearch={setIsAdvancedSearch}
             />
           </Panel>
+          
           <PanelResizeHandle className={isMobile ? "resize-handle-vertical" : "resize-handle-horizontal"} />
+          
+          {/* Main Area (Editor + Results) */}
           <Panel defaultSize={75} minSize={30}>
-            <div className="main-panel" style={{ height: '100%', width: '100%' }}>
+            <div className="main-panel h-full w-full">
               <PanelGroup orientation="vertical">
+                {/* Editor Panel */}
                 <Panel defaultSize={60} minSize={20}>
                   <QueryEditor
                     onExecute={handleExecuteQuery}
@@ -441,14 +445,28 @@ function App() {
                     isExecuting={isExecuting}
                     script={objectScript}
                     isOffline={isOffline}
-                    highlightTerm={isAdvancedSearch ? searchTerm : undefined}
                     query={query}
                     onQueryChange={setQuery}
+                    isAIModalOpen={isAIModalOpen}
+                    onToggleAI={setIsAIModalOpen}
+                    onShowAIResult={(msg) => {
+                      setQueryResult(null);
+                      setQueryError(null);
+                      setAiResult(null);
+                      let cleanCode = msg;
+                      const codeBlockMatch = msg.match(/```(?:sql|SQL)?\n([\s\S]*?)\n```/);
+                      if (codeBlockMatch) cleanCode = codeBlockMatch[1];
+                      const header = `-- =============================================\n-- AI GENERATED CODE\n-- =============================================\n\n`;
+                      setQuery(header + cleanCode.trim());
+                    }}
                   />
                 </Panel>
+                
                 <PanelResizeHandle className="resize-handle-vertical" />
-                <Panel defaultSize={40} minSize={20}>
-                  <ResultsGrid result={queryResult} error={queryError} />
+                
+                {/* Results Panel */}
+                <Panel defaultSize={40} minSize={20} ref={resultsPanelRef} collapsible>
+                  <ResultsGrid result={queryResult} error={queryError} aiResult={aiResult} />
                 </Panel>
               </PanelGroup>
             </div>
