@@ -34,11 +34,11 @@ router.post('/ask', async (req: Request, res: Response) => {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData: any = await response.json();
       throw new Error(errorData.error?.message || 'Groq API call failed');
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     const aiResponse = data.choices[0].message.content;
     
     res.json({ message: aiResponse });
