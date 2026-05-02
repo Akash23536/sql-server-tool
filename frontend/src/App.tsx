@@ -1,5 +1,5 @@
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
-import { useRef, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ConnectionForm } from './components/ConnectionForm';
 import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
