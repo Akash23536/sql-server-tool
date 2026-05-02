@@ -100,7 +100,6 @@ function App() {
   const [queryController, setQueryController] = useState<AbortController | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const resultsPanelRef = useRef<any>(null);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -294,11 +293,6 @@ function App() {
     setQueryResult(null);
     setAiResult(null);
 
-    // Auto-expand results panel when executing
-    if (resultsPanelRef.current) {
-      resultsPanelRef.current.expand();
-    }
-
     try {
       const result = await executeQuery(selectedDatabase, queryText, controller.signal);
       setQueryResult(result);
@@ -464,7 +458,7 @@ function App() {
                 <PanelResizeHandle className="resize-handle-vertical" />
                 
                 {/* Results Panel */}
-                <Panel defaultSize={40} minSize={20} ref={resultsPanelRef} collapsible>
+                <Panel defaultSize={40} minSize={20} collapsible>
                   <ResultsGrid result={queryResult} error={queryError} aiResult={aiResult} />
                 </Panel>
               </PanelGroup>
