@@ -34,8 +34,8 @@ export function QueryEditor({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const isUndoAction = useRef(false);
 
-  const vibrate = (ms: number = 10) => {
-    if (navigator.vibrate) navigator.vibrate(ms);
+  const vibrate = (pattern: number | number[] = 10) => {
+    if (navigator.vibrate) navigator.vibrate(pattern as any);
   };
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);

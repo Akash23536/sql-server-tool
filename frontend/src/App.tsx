@@ -1,5 +1,4 @@
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
-import type { ImperativePanelHandle } from 'react-resizable-panels';
 import { useRef, useState, useEffect } from 'react';
 import { ConnectionForm } from './components/ConnectionForm';
 import { ObjectBrowser } from './components/ObjectBrowser';
@@ -12,7 +11,6 @@ import {
   getObjectScript,
   executeQuery,
   disconnect,
-  searchScripts,
 } from './api';
 import type { ConnectionConfig, DbObject, QueryResult, Database } from './api';
 import type { ObjectTypeFilter } from './api';
@@ -102,7 +100,7 @@ function App() {
   const [queryController, setQueryController] = useState<AbortController | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const resultsPanelRef = useRef<ImperativePanelHandle>(null);
+  const resultsPanelRef = useRef<any>(null);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -250,11 +248,12 @@ function App() {
 
 
   // Handle search
-  const handleSearch = async (term: string, typeOverride?: ObjectTypeFilter) => {
+  const handleSearch = (term: string) => {
     setSearchTerm(term);
     setCurrentPage(1);
+    setObjectTotal(0);
     setObjectHasMore(false);
-
+    
     if (selectedDatabase) {
       loadObjects(selectedDatabase, objectFilter, 1, pageSize, term);
     }
