@@ -4,6 +4,7 @@ import { ConnectionForm } from './components/ConnectionForm';
 import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
 import { ResultsGrid } from './components/ResultsGrid';
+import { ModifiedObjects } from './components/ModifiedObjects';
 import {
   connectToServer,
   getDatabases,
@@ -100,6 +101,7 @@ function App() {
   const [queryController, setQueryController] = useState<AbortController | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [showModifiedObjects, setShowModifiedObjects] = useState(false);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -247,14 +249,31 @@ function App() {
 
 
   // Handle search
-  const handleSearch = (term: string) => {
+  const handleSearch = (term: string, typeOverride?: ObjectTypeFilter) => {
     setSearchTerm(term);
+    if (typeOverride) {
+      setObjectFilter(typeOverride);
+    }
     setCurrentPage(1);
     setObjectTotal(0);
     setObjectHasMore(false);
     
     if (selectedDatabase) {
-      loadObjects(selectedDatabase, objectFilter, 1, pageSize, term);
+      loadObjects(selectedDatabase, typeOverride || objectFilter, 1, pageSize, term);
+    }
+  };
+
+  const mapObjectTypeToFilter = (typeCode: string): ObjectTypeFilter => {
+    switch (typeCode.toUpperCase()) {
+      case 'U': return 'tables';
+      case 'V': return 'views';
+      case 'P': return 'procedures';
+      case 'FN': return 'scalar_functions';
+      case 'TF': return 'table_valued_functions';
+      case 'IF': return 'inline_table_functions';
+      case 'TR': return 'triggers';
+      case 'SN': return 'synonyms';
+      default: return 'all';
     }
   };
 
@@ -271,10 +290,30 @@ function App() {
 
     if (selectedDatabase) {
       try {
-        const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action);
+        const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action, obj.schemaName);
         setObjectScript(script);
       } catch (error: any) {
         setObjectScript('Failed to load script');
+      }
+    }
+  };
+
+  const handleModifiedObjectAction = async (obj: any, action: string) => {
+    setShowModifiedObjects(false);
+    setSelectedObject(obj);
+    setSearchTerm(obj.objectName);
+    const filterType = mapObjectTypeToFilter(obj.objectType || '');
+    setObjectFilter(filterType);
+
+    if (selectedDatabase) {
+      await loadObjects(selectedDatabase, filterType, 1, pageSize, obj.objectName);
+      if (action !== 'highlight') {
+        try {
+          const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action, obj.schemaName);
+          setObjectScript(script);
+        } catch (error: any) {
+          setObjectScript('Failed to load script');
+        }
       }
     }
   };
@@ -421,6 +460,7 @@ function App() {
               totalObjects={objectTotal}
               onSearch={handleSearch}
               searchTerm={searchTerm}
+              onShowModifiedObjects={() => setShowModifiedObjects(true)}
             />
           </Panel>
           
@@ -466,6 +506,14 @@ function App() {
           </Panel>
         </PanelGroup>
       </div>
+
+      {/* Modified Objects Modal */}
+      <ModifiedObjects
+        database={selectedDatabase}
+        isOpen={showModifiedObjects}
+        onClose={() => setShowModifiedObjects(false)}
+        onAction={handleModifiedObjectAction}
+      />
     </div>
   );
 }

@@ -28,6 +28,7 @@ interface ObjectBrowserProps {
   onSearch: (term: string, typeOverride?: ObjectTypeFilter) => void;
   searchTerm: string;
   isOffline?: boolean;
+  onShowModifiedObjects?: () => void;
 }
 
 export function ObjectBrowser({
@@ -45,6 +46,7 @@ export function ObjectBrowser({
   totalObjects,
   onSearch,
   searchTerm,
+  onShowModifiedObjects,
 }: ObjectBrowserProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -62,11 +64,12 @@ export function ObjectBrowser({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearchTerm !== searchTerm) {
-        onSearch(localSearchTerm);
-        if (localSearchTerm.trim()) {
+      const normalizedSearch = localSearchTerm.replace(/\s+/g, ' ').trim();
+      if (normalizedSearch !== searchTerm) {
+        onSearch(normalizedSearch);
+        if (normalizedSearch) {
           setSearchHistory(prev => {
-            const updated = [localSearchTerm, ...prev.filter(h => h !== localSearchTerm)].slice(0, 10);
+            const updated = [normalizedSearch, ...prev.filter(h => h !== normalizedSearch)].slice(0, 10);
             localStorage.setItem('searchHistory', JSON.stringify(updated));
             return updated;
           });
@@ -74,7 +77,7 @@ export function ObjectBrowser({
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [localSearchTerm]);
+  }, [localSearchTerm, searchTerm]);
 
   useEffect(() => {
     setShowHistory(false);
@@ -147,7 +150,7 @@ export function ObjectBrowser({
   return (
     <div className="flex flex-col h-full bg-[#f0f0f0] dark:bg-[#252526] border-r border-gray-300 dark:border-[#3c3c3c] overflow-hidden select-none">
       {/* Header Section */}
-      <div className="flex flex-col gap-1 p-2 bg-[#f3f3f3] dark:bg-[#252526] border-b border-gray-300 dark:border-[#3c3c3c]">
+      <div className="flex flex-col gap-2 p-2 bg-[#f3f3f3] dark:bg-[#252526] border-b border-gray-300 dark:border-[#3c3c3c]">
         <div className="flex items-center gap-2">
           <span className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest">Database</span>
           <select 
@@ -163,6 +166,16 @@ export function ObjectBrowser({
               </option>
             ))}
           </select>
+        </div>
+        <div className="flex">
+          <button
+            onClick={() => onShowModifiedObjects?.()}
+            disabled={!selectedDatabase}
+            className="w-full px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-[10px] md:text-xs font-bold rounded transition-colors"
+            title="Show Modified Database Object Log"
+          >
+            Modified Database Object Log
+          </button>
         </div>
       </div>
 
@@ -237,7 +250,7 @@ export function ObjectBrowser({
                 <span className={`w-4 h-4 md:w-5 md:h-5 flex items-center justify-center text-[7px] md:text-[8px] font-black rounded border border-gray-300 dark:border-gray-600 ${selectedObject?.objectName === obj.objectName ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>
                   {getShortType(obj.objectType)}
                 </span>
-                <span className="flex-1 truncate">{obj.schemaName ? `${obj.schemaName}.${obj.objectName}` : obj.objectName}</span>
+                <span className="flex-1 min-w-0 text-[10px] md:text-xs break-words">{obj.schemaName ? `${obj.schemaName}.${obj.objectName}` : obj.objectName}</span>
               </div>
             ))}
             <div ref={loadingRef} className="p-2 text-center text-[10px] text-gray-400">

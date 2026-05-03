@@ -50,6 +50,7 @@ export type ObjectTypeFilter =
   | 'procedures' 
   | 'scalar_functions' 
   | 'table_valued_functions' 
+  | 'inline_table_functions' 
   | 'triggers' 
   | 'synonyms';
 
@@ -61,6 +62,7 @@ export const OBJECT_TYPE_OPTIONS: { value: ObjectTypeFilter; label: string }[] =
   { value: 'procedures', label: 'Stored Procedures' },
   { value: 'scalar_functions', label: 'Scalar Functions' },
   { value: 'table_valued_functions', label: 'Table Valued Functions' },
+  { value: 'inline_table_functions', label: 'Inline Table Functions' },
   { value: 'triggers', label: 'Triggers' },
   { value: 'synonyms', label: 'Synonyms' },
 ];
@@ -145,8 +147,11 @@ export const getObjects = async (
 };
 
 // Get object script
-export const getObjectScript = async (database: string, objectName: string, objectType: string, action: string = 'select'): Promise<string> => {
+export const getObjectScript = async (database: string, objectName: string, objectType: string, action: string = 'select', objectSchema?: string): Promise<string> => {
   const params = new URLSearchParams({ database, objectName, objectType, action });
+  if (objectSchema) {
+    params.append('objectSchema', objectSchema);
+  }
   const response = await fetch(`${API_BASE}/script?${params}`);
   if (!response.ok) {
     const error = await response.json();
@@ -187,6 +192,25 @@ export const executeQuery = async (database: string, query: string, signal?: Abo
 // Disconnect
 export const disconnect = async (): Promise<void> => {
   await fetch(`${API_BASE}/disconnect`, { method: 'POST' });
+};
+
+// Get modified objects
+export const getModifiedObjects = async (
+  database: string,
+  pageNumber: number = 1,
+  pageSize: number = 10
+): Promise<{ objects: DbObject[]; page: number; pageSize: number; totalCount: number; hasMore: boolean }> => {
+  const params = new URLSearchParams({
+    database,
+    pageNumber: pageNumber.toString(),
+    pageSize: pageSize.toString(),
+  });
+  const response = await fetch(`${API_BASE}/modified-objects?${params}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to get modified objects');
+  }
+  return response.json();
 };
 
 // Ask AI

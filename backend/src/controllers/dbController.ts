@@ -90,6 +90,7 @@ export const getObjects = async (req: Request, res: Response) => {
         'procedures': "'P'",
         'scalar_functions': "'FN'",
         'table_valued_functions': "'TF'",
+        'inline_table_functions': "'IF'",
         'triggers': "'TR'",
         'synonyms': "'SN'"
       };
@@ -104,6 +105,7 @@ export const getObjects = async (req: Request, res: Response) => {
         'procedures': 'PROCEDURE',
         'scalar_functions': 'SCALAR FUNCTION',
         'table_valued_functions': 'TABLE VALUED FUNCTION',
+        'inline_table_functions': 'INLINE TABLE FUNCTION',
         'triggers': 'TRIGGER',
         'synonyms': 'SYNONYM'
       };
@@ -115,7 +117,12 @@ export const getObjects = async (req: Request, res: Response) => {
     const typeLabel = getTypeLabel(objectType);
 
     const searchCondition = search
-      ? `AND o.name LIKE '%${search.replace(/'/g, "''")}%'`
+      ? `AND (
+          o.name LIKE '%${search.replace(/'/g, "''")}%' OR
+          REPLACE(o.name, ' ', '') LIKE '%${search.replace(/\s+/g, ' ').trim().replace(/ /g, '').replace(/'/g, "''")}%' OR
+          s.name LIKE '%${search.replace(/'/g, "''")}%' OR
+          REPLACE(s.name, ' ', '') LIKE '%${search.replace(/\s+/g, ' ').trim().replace(/ /g, '').replace(/'/g, "''")}%' 
+        )`
       : '';
 
     const countQuery = `
@@ -194,6 +201,7 @@ export const getObjectCounts = async (req: Request, res: Response) => {
         COUNT(CASE WHEN o.type = 'P' THEN 1 END) AS procedures,
         COUNT(CASE WHEN o.type = 'FN' THEN 1 END) AS scalar_functions,
         COUNT(CASE WHEN o.type = 'TF' THEN 1 END) AS table_valued_functions,
+        COUNT(CASE WHEN o.type = 'IF' THEN 1 END) AS inline_table_functions,
         COUNT(CASE WHEN o.type = 'TR' THEN 1 END) AS triggers,
         COUNT(CASE WHEN o.type = 'SN' THEN 1 END) AS synonyms,
         COUNT(*) AS all_objects
@@ -227,16 +235,22 @@ export const getScript = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Not connected to SQL Server' });
     }
 
-    const { database, objectName, objectType, action } = req.query;
+    const { database, objectName, objectSchema, objectType, action } = req.query;
     if (!database || !objectName) {
       return res.status(400).json({ error: 'Database and object name are required' });
     }
 
     const dbName = decodeURIComponent(database as string);
     const objName = decodeURIComponent(objectName as string);
+    const schemaName = objectSchema ? decodeURIComponent(objectSchema as string) : '';
+    const safeDbName = dbName.replace(/\[/g, '').replace(/\]/g, '');
+    const safeObjName = objName.replace(/\[/g, '').replace(/\]/g, '');
+    const safeSchemaName = schemaName.replace(/\[/g, '').replace(/\]/g, '');
+    const qualifiedName = safeSchemaName ? `[${safeSchemaName}].[${safeObjName}]` : `[${safeObjName}]`;
+    const schemaDotName = safeSchemaName ? `${safeSchemaName}.${safeObjName}` : `${safeObjName}`;
     const scriptAction = (action as string) || 'select';
 
-    await pool.query(`USE [${dbName.replace(/\[/g, '').replace(/\]/g, '')}]`);
+    await pool.query(`USE [${safeDbName}]`);
 
     let script = '';
 
@@ -252,11 +266,12 @@ export const getScript = async (req: Request, res: Response) => {
             NUMERIC_PRECISION,
             NUMERIC_SCALE
           FROM INFORMATION_SCHEMA.COLUMNS
-          WHERE TABLE_NAME = '${objName}'
+          WHERE TABLE_NAME = '${safeObjName}'
+            ${safeSchemaName ? `AND TABLE_SCHEMA = '${safeSchemaName}'` : ''}
           ORDER BY ORDINAL_POSITION
         `);
 
-        let createScript = `-- Table: ${objName}\nCREATE TABLE [${objName}] (\n`;
+        let createScript = `-- Table: ${qualifiedName}\nCREATE TABLE ${qualifiedName} (\n`;
         createScript += cols.recordset.map((col: any) => {
           let colDef = `  [${col.COLUMN_NAME}] ${col.DATA_TYPE}`;
           if (col.CHARACTER_MAXIMUM_LENGTH) {
@@ -277,7 +292,7 @@ export const getScript = async (req: Request, res: Response) => {
         createScript += '\n);';
         return createScript;
       } else {
-        const result = await pool!.query(`EXEC sp_helptext '${objName}'`);
+        const result = await pool!.query(`EXEC sp_helptext '${schemaDotName}'`);
         return result.recordset.map((row: any) => row.Text).join('');
       }
     };
@@ -290,29 +305,30 @@ export const getScript = async (req: Request, res: Response) => {
         break;
       case 'alter':
         if (objectType === 'TABLE' || objectType === 'BASE TABLE') {
-          script = `-- Alter Table: ${objName}\n-- Use this template to modify an existing table\nALTER TABLE [${objName}]\nADD [ColumnName] datatype NULL;\n\n-- To drop a column:\n-- ALTER TABLE [${objName}] DROP COLUMN ColumnName;\n\n-- To rename:\n-- EXEC sp_rename '[${objName}]', 'NewTableName';`;
+          script = `-- Alter Table: ${qualifiedName}\n-- Use this template to modify an existing table\nALTER TABLE ${qualifiedName}\nADD [ColumnName] datatype NULL;\n\n-- To drop a column:\n-- ALTER TABLE ${qualifiedName} DROP COLUMN ColumnName;\n\n-- To rename:\n-- EXEC sp_rename '${schemaDotName}', 'New${safeObjName}';`;
         } else {
-          script = `-- Alter ${objectType}: ${objName}\n-- Modify the object as needed\n${baseScript}`;
+          script = `-- Alter ${objectType}: ${qualifiedName}\n-- Modify the object as needed\n${baseScript}`;
         }
         break;
       case 'drop':
-        script = `-- Drop ${objectType}: ${objName}\nDROP ${objectType === 'TABLE' || objectType === 'BASE TABLE' ? 'TABLE' : objectType} [${objName}];`;
+        script = `-- Drop ${objectType}: ${qualifiedName}\nDROP ${objectType === 'TABLE' || objectType === 'BASE TABLE' ? 'TABLE' : objectType} ${qualifiedName};`;
         break;
       case 'rename':
-        script = `-- Rename ${objectType}: ${objName}\nEXEC sp_rename '[${objName}]', 'New${objName}';`;
+        script = `-- Rename ${objectType}: ${qualifiedName}\nEXEC sp_rename '${schemaDotName}', 'New${safeObjName}';`;
         break;
       case 'select_top_50':
         const columnsResult = await pool!.query(`
           SELECT COLUMN_NAME 
           FROM INFORMATION_SCHEMA.COLUMNS 
-          WHERE TABLE_NAME = '${objName}'
+          WHERE TABLE_NAME = '${safeObjName}'
+            ${safeSchemaName ? `AND TABLE_SCHEMA = '${safeSchemaName}'` : ''}
           ORDER BY ORDINAL_POSITION
         `);
         if (columnsResult.recordset.length > 0) {
           const columns = columnsResult.recordset.map((c: any) => `[${c.COLUMN_NAME}]`).join(',\n  ');
-          script = `SELECT TOP 50\n  ${columns}\nFROM [${objName}]`;
+          script = `SELECT TOP 50\n  ${columns}\nFROM ${qualifiedName}`;
         } else {
-          script = `SELECT TOP 50 * FROM [${objName}]`;
+          script = `SELECT TOP 50 * FROM ${qualifiedName}`;
         }
         break;
       default:
@@ -398,15 +414,7 @@ export const searchScripts = async (req: Request, res: Response) => {
     const result = await pool.query(`
       SELECT DISTINCT
         o.name AS objectName,
-        CASE o.type
-          WHEN 'U' THEN 'TABLE'
-          WHEN 'V' THEN 'VIEW'
-          WHEN 'P' THEN 'PROCEDURE'
-          WHEN 'TF' THEN 'TABLE VALUED FUNCTION'
-          WHEN 'FN' THEN 'SCALAR FUNCTION'
-          WHEN 'TR' THEN 'TRIGGER'
-          WHEN 'SN' THEN 'SYNONYM'
-        END AS objectType,
+        o.type AS objectType,
         s.name AS schemaName,
         o.create_date,
         o.modify_date,
@@ -431,6 +439,67 @@ export const searchScripts = async (req: Request, res: Response) => {
   }
 };
 
+export const getModifiedObjects = async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return res.status(400).json({ error: 'Not connected to SQL Server' });
+    }
+
+    const { database, pageNumber, pageSize } = req.query;
+    if (!database) {
+      return res.status(400).json({ error: 'Database is required' });
+    }
+
+    const dbName = decodeURIComponent(database as string);
+    await pool.query(`USE [${dbName.replace(/\[/g, '').replace(/\]/g, '')}]`);
+
+    const page = Math.max(parseInt(pageNumber as string) || 1, 1);
+    const size = Math.max(parseInt(pageSize as string) || 10, 1);
+    const offset = (page - 1) * size;
+
+    const countQuery = `
+      SELECT COUNT(*) AS totalCount
+      FROM sys.objects o
+      WHERE o.is_ms_shipped = 0
+        AND o.type IN ('U', 'V', 'P', 'TF', 'FN', 'IF', 'TR', 'SN')
+    `;
+    const countResult = await pool.query(countQuery);
+    const totalCount = countResult.recordset[0]?.totalCount || 0;
+
+    const query = `
+      SELECT 
+        o.name AS objectName,
+        o.type AS objectType,
+        s.name AS schemaName,
+        o.object_id AS objectId,
+        o.create_date AS createDate,
+        o.modify_date AS modifyDate
+      FROM sys.objects o
+      INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+      WHERE o.is_ms_shipped = 0
+        AND o.type IN ('U', 'V', 'P', 'TF', 'FN', 'IF', 'TR', 'SN')
+      ORDER BY o.modify_date DESC, o.name ASC
+      OFFSET ${offset} ROWS
+      FETCH NEXT ${size} ROWS ONLY
+    `;
+
+    const result = await pool.query(query);
+    const objects = result.recordset;
+    const hasMore = offset + objects.length < totalCount;
+
+    res.json({
+      objects,
+      page,
+      pageSize: size,
+      totalCount,
+      hasMore,
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
 export const disconnect = async (req: Request, res: Response) => {
   try {
     await closePool();
@@ -439,3 +508,5 @@ export const disconnect = async (req: Request, res: Response) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+
