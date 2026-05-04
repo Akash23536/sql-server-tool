@@ -5,11 +5,14 @@ import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
 import { ResultsGrid } from './components/ResultsGrid';
 import { ModifiedObjects } from './components/ModifiedObjects';
+import { ObjectCompare } from './components/ObjectCompare';
+import { ExcelTool } from './components/ExcelTool';
 import {
   connectToServer,
   getDatabases,
   getObjects,
   getObjectScript,
+  searchScripts,
   executeQuery,
   disconnect,
 } from './api';
@@ -102,17 +105,40 @@ function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [showModifiedObjects, setShowModifiedObjects] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [showExcelTool, setShowExcelTool] = useState(false);
+  const [objectToCompare, setObjectToCompare] = useState<DbObject | null>(null);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isDeepSearch, setIsDeepSearch] = useState(() => localStorage.getItem('sql_isDeepSearch') === 'true');
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
   useEffect(() => { localStorage.setItem('sql_lastFilter', objectFilter); }, [objectFilter]);
   useEffect(() => { localStorage.setItem('sql_lastSearch', searchTerm); }, [searchTerm]);
   useEffect(() => { localStorage.setItem('sql_lastQuery', query); }, [query]);
+  useEffect(() => { localStorage.setItem('sql_isDeepSearch', isDeepSearch.toString()); }, [isDeepSearch]);
+
+  // Initial object load on reconnect/refresh
+  useEffect(() => {
+    if (isConnected && selectedDatabase && objects.length === 0 && !isLoadingObjects) {
+      loadObjects(selectedDatabase, objectFilter, 1, pageSize, searchTerm);
+    }
+  }, [isConnected, selectedDatabase]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsSidebarVisible(prev => !prev);
+      }
+    };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // Handle connection
@@ -193,29 +219,45 @@ function App() {
     }
   };
 
-  // Load objects with pagination
   const loadObjects = async (
     database: string, 
     filter: ObjectTypeFilter, 
     page: number, 
     size: number,
-    search: string
+    search: string,
+    deepSearchOverride?: boolean
   ) => {
     setIsLoadingObjects(true);
+    const deepSearchActive = deepSearchOverride !== undefined ? deepSearchOverride : isDeepSearch;
+    
     try {
-      const result = await getObjects(database, filter, page, size, search || undefined);
-      
-      if (page === 1) {
-        // First page - replace objects
-        setObjects(result.objects);
+      if (deepSearchActive && search) {
+        // Use deep search (search inside scripts) with pagination
+        const result = await searchScripts(database, search, filter, page, size);
+        
+        if (page === 1) {
+          setObjects(result.objects);
+        } else {
+          setObjects(prev => [...prev, ...result.objects]);
+        }
+        
+        setObjectTotal(result.total);
+        setObjectHasMore(result.hasMore);
+        setCurrentPage(page);
       } else {
-        // Subsequent pages - append objects
-        setObjects(prev => [...prev, ...result.objects]);
+        // Standard name-based search with pagination
+        const result = await getObjects(database, filter, page, size, search || undefined);
+        
+        if (page === 1) {
+          setObjects(result.objects);
+        } else {
+          setObjects(prev => [...prev, ...result.objects]);
+        }
+        
+        setObjectTotal(result.total);
+        setObjectHasMore(result.hasMore);
+        setCurrentPage(page);
       }
-      
-      setObjectTotal(result.total);
-      setObjectHasMore(result.hasMore);
-      setCurrentPage(page);
     } catch (error: any) {
       console.error('Failed to load objects:', error);
       if (page === 1) {
@@ -251,15 +293,23 @@ function App() {
   // Handle search
   const handleSearch = (term: string, typeOverride?: ObjectTypeFilter) => {
     setSearchTerm(term);
-    if (typeOverride) {
+    
+    // If deep search is enabled and we have a term, default to 'all' objects 
+    // unless a specific type was requested, because code dependencies can be anywhere.
+    const effectiveFilter = (isDeepSearch && term && !typeOverride) ? 'all' : (typeOverride || objectFilter);
+    
+    if (isDeepSearch && term && !typeOverride) {
+      setObjectFilter('all');
+    } else if (typeOverride) {
       setObjectFilter(typeOverride);
     }
+
     setCurrentPage(1);
     setObjectTotal(0);
     setObjectHasMore(false);
     
     if (selectedDatabase) {
-      loadObjects(selectedDatabase, typeOverride || objectFilter, 1, pageSize, term);
+      loadObjects(selectedDatabase, effectiveFilter, 1, pageSize, term);
     }
   };
 
@@ -283,6 +333,13 @@ function App() {
   const handleSelectObject = async (obj: any, action: string = 'select') => {
     setSelectedObject(obj);
     
+    if (action === 'search_dependencies') {
+      setIsDeepSearch(true);
+      setSearchTerm(obj.objectName);
+      loadObjects(selectedDatabase, 'all', 1, pageSize, obj.objectName, true);
+      return;
+    }
+
     // Only generate script if it's explicitly requested (not just highlighting via left-click)
     if (action === 'highlight') {
       return;
@@ -306,6 +363,12 @@ function App() {
     setObjectFilter(filterType);
 
     if (selectedDatabase) {
+      if (action === 'compare') {
+        setObjectToCompare(obj);
+        setShowCompareModal(true);
+        return;
+      }
+
       await loadObjects(selectedDatabase, filterType, 1, pageSize, obj.objectName);
       if (action !== 'highlight') {
         try {
@@ -410,64 +473,118 @@ function App() {
 
   return (
     <div className={`app h-screen flex flex-col ${isDarkTheme ? 'dark' : ''}`} data-theme={isDarkTheme ? 'dark' : 'light'}>
-      {/* SSMS Style Toolbar Header */}
-      {/* SSMS Style Toolbar Header */}
-      <div className="flex items-center justify-between px-3 py-1 bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c] text-sm shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-2 py-0.5 bg-black/5 dark:bg-white/5 rounded border border-gray-400/20">
-            <div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-red-500' : 'bg-green-500'} animate-pulse`}></div>
-            <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300 tracking-tight">
-              {connectionConfig?.server}:{connectionConfig?.port}
-            </span>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">User:</span>
-            <span className="text-[11px] font-extrabold text-[#0078d4] dark:text-[#3a96dd]">
-              {connectionConfig?.username?.toUpperCase()}
-            </span>
-          </div>
-          
+      {/* Minimal Top Bar */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c] shadow-sm">
+        {/* Left: Sidebar Toggle + User Avatar Card */}
+        <div className="flex items-center gap-3">
           <button 
-            onClick={handleDisconnect}
-            className="px-4 py-1 text-[11px] font-black text-white bg-[#0078d4] hover:bg-[#005a9e] rounded shadow-sm transition-all uppercase tracking-tighter"
+            onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+            className={`p-1.5 rounded-md transition-all ${ isSidebarVisible ? 'bg-[#0078d4]/20 text-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-700'}`}
+            title={isSidebarVisible ? 'Hide Sidebar (Alt+B)' : 'Show Sidebar (Alt+B)'}
           >
-            Disconnect
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              {isSidebarVisible
+                ? <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+                : <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M6 5l7 7-7 7" />
+              }
+            </svg>
           </button>
+
+          {/* Combined Avatar Card */}
+          <div className="flex items-center gap-2.5 px-3 py-1 bg-white/40 dark:bg-white/5 rounded-lg border border-white/30 dark:border-white/10 backdrop-blur-sm shadow-sm">
+            {/* Avatar circle */}
+            <div className="relative flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0078d4] via-[#2a8fd4] to-[#5bb4ff] flex items-center justify-center text-white text-sm font-black shadow-md ring-2 ring-white/60 dark:ring-white/10">
+                {connectionConfig?.username?.[0]?.toUpperCase() || 'U'}
+              </div>
+              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#dee1e6] dark:border-[#2d2d2d] ${isOffline ? 'bg-red-500' : 'bg-emerald-400'}`}></div>
+            </div>
+            {/* Text info */}
+            <div className="flex flex-col justify-center">
+              <span className="text-[11px] font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight leading-none">
+                {connectionConfig?.username || 'USER'}
+              </span>
+              <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-400 leading-none mt-0.5">
+                {connectionConfig?.server}:{connectionConfig?.port}
+              </span>
+            </div>
+          </div>
         </div>
+
+        {/* Right: Disconnect icon button only */}
+        <button 
+          onClick={handleDisconnect}
+          title="Disconnect"
+          className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 border border-red-300/30 hover:border-red-500 hover:shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+          </svg>
+          <span className="text-[10px] font-black uppercase tracking-widest">Disconnect</span>
+        </button>
       </div>
 
       {/* App Content */}
-      <div className="app-content relative">
+      <div className="app-content relative flex overflow-hidden">
+        {/* Mobile Top Toggle Handle (when sidebar hidden) */}
+        {!isSidebarVisible && isMobile && (
+          <div
+            onClick={() => setIsSidebarVisible(true)}
+            className="absolute top-0 left-0 right-0 h-1.5 bg-[#0078d4] hover:h-3 cursor-pointer z-[100] transition-all flex items-center justify-center group"
+            title="Show Object Browser"
+          >
+            <span className="text-[8px] text-white opacity-0 group-hover:opacity-100 font-bold">▼</span>
+          </div>
+        )}
+
+        {/* Desktop Left Edge Handle (when sidebar hidden) */}
+        {!isSidebarVisible && !isMobile && (
+          <div 
+            onClick={() => setIsSidebarVisible(true)}
+            className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#0078d4] hover:w-3 cursor-pointer z-[100] transition-all flex items-center justify-center group"
+            title="Expand Sidebar"
+          >
+            <span className="text-[8px] text-white opacity-0 group-hover:opacity-100 font-bold">▶</span>
+          </div>
+        )}
+
         <PanelGroup orientation={isMobile ? "vertical" : "horizontal"}>
           {/* Object Browser Panel */}
-          <Panel defaultSize={25} minSize={15}>
-            <ObjectBrowser
-              databases={databases}
-              selectedDatabase={selectedDatabase}
-              isOffline={isOffline}
-              onSelectDatabase={handleSelectDatabase}
-              objects={objects}
-              onSelectObject={handleSelectObject}
-              selectedObject={selectedObject}
-              onObjectTypeFilter={handleObjectTypeFilter}
-              currentFilter={objectFilter}
-              hasMore={objectHasMore}
-              isLoading={isLoadingObjects}
-              onLoadMore={loadMoreObjects}
-              totalObjects={objectTotal}
-              onSearch={handleSearch}
-              searchTerm={searchTerm}
-              onShowModifiedObjects={() => setShowModifiedObjects(true)}
-            />
-          </Panel>
-          
-          <PanelResizeHandle className={isMobile ? "resize-handle-vertical" : "resize-handle-horizontal"} />
+          {isSidebarVisible && (
+            <>
+              <Panel defaultSize={25} minSize={15}>
+                <ObjectBrowser
+                  databases={databases}
+                  selectedDatabase={selectedDatabase}
+                  isOffline={isOffline}
+                  onSelectDatabase={handleSelectDatabase}
+                  objects={objects}
+                  onSelectObject={handleSelectObject}
+                  selectedObject={selectedObject}
+                  onObjectTypeFilter={handleObjectTypeFilter}
+                  currentFilter={objectFilter}
+                  hasMore={objectHasMore}
+                  isLoading={isLoadingObjects}
+                  onLoadMore={loadMoreObjects}
+                  totalObjects={objectTotal}
+                  onSearch={handleSearch}
+                  searchTerm={searchTerm}
+                  isDeepSearch={isDeepSearch}
+                  onToggleDeepSearch={setIsDeepSearch}
+                  onShowModifiedObjects={() => setShowModifiedObjects(true)}
+                  onShowExcelTool={() => setShowExcelTool(true)}
+                  onShowCompare={(obj) => {
+                    setObjectToCompare(obj);
+                    setShowCompareModal(true);
+                  }}
+                />
+              </Panel>
+              <PanelResizeHandle className={isMobile ? "resize-handle-vertical" : "resize-handle-horizontal"} />
+            </>
+          )}
           
           {/* Main Area (Editor + Results) */}
-          <Panel defaultSize={75} minSize={30}>
+          <Panel defaultSize={isSidebarVisible ? 75 : 100} minSize={30}>
             <div className="main-panel h-full w-full">
               <PanelGroup orientation="vertical">
                 {/* Editor Panel */}
@@ -478,6 +595,7 @@ function App() {
                     isExecuting={isExecuting}
                     script={objectScript}
                     isOffline={isOffline}
+                    highlightTerm={searchTerm}
                     query={query}
                     onQueryChange={setQuery}
                     isAIModalOpen={isAIModalOpen}
@@ -513,6 +631,25 @@ function App() {
         isOpen={showModifiedObjects}
         onClose={() => setShowModifiedObjects(false)}
         onAction={handleModifiedObjectAction}
+      />
+
+      {/* Object Compare Modal */}
+      <ObjectCompare
+        isOpen={showCompareModal}
+        onClose={() => {
+          setShowCompareModal(false);
+          setObjectToCompare(null);
+        }}
+        databases={databases}
+        selectedDatabase={selectedDatabase}
+        selectedObject={objectToCompare}
+      />
+
+      {/* Excel Tool Modal */}
+      <ExcelTool
+        isOpen={showExcelTool}
+        onClose={() => setShowExcelTool(false)}
+        database={selectedDatabase}
       />
     </div>
   );

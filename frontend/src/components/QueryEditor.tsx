@@ -32,6 +32,7 @@ export function QueryEditor({
   const [isAILoading, setIsAILoading] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [fontSize, setFontSize] = useState(14);
   const isUndoAction = useRef(false);
 
   const vibrate = (pattern: number | number[] = 10) => {
@@ -126,6 +127,18 @@ export function QueryEditor({
       navigator.clipboard.writeText(query);
     }
 
+    // Alt + Plus: Zoom In
+    if ((e.key === '+' || e.key === '=') && e.altKey) {
+      e.preventDefault();
+      handleZoomIn();
+    }
+
+    // Alt + Minus: Zoom Out
+    if (e.key === '-' && e.altKey) {
+      e.preventDefault();
+      handleZoomOut();
+    }
+
     if (e.key === 'Tab') {
       e.preventDefault();
       const start = (e.currentTarget as HTMLTextAreaElement).selectionStart;
@@ -164,6 +177,21 @@ export function QueryEditor({
     } finally {
       setIsAILoading(false);
     }
+  };
+
+  const handleZoomIn = () => {
+    vibrate(5);
+    setFontSize(prev => Math.min(prev + 2, 32));
+  };
+
+  const handleZoomOut = () => {
+    vibrate(5);
+    setFontSize(prev => Math.max(prev - 2, 8));
+  };
+
+  const handleZoomReset = () => {
+    vibrate(5);
+    setFontSize(14);
   };
 
   const getLineNumbers = () => {
@@ -275,20 +303,44 @@ export function QueryEditor({
               <span className="text-xs md:text-sm">🤖</span>
               <span className="hidden sm:inline">Ask AI</span>
             </button>
+
+            <div className="h-4 md:h-6 w-px bg-gray-300 dark:bg-gray-700 mx-1"></div>
+
+            {/* Zoom Controls - Part of the scrollable toolbar 'slider' */}
+            <div className="flex items-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-sm overflow-hidden min-w-max">
+              <button
+                onClick={handleZoomOut}
+                className="px-3 py-1 text-[#0078d4] hover:bg-gray-100 dark:hover:bg-gray-700 font-bold border-r border-gray-300 dark:border-gray-600 text-xs transition-colors"
+                title="Zoom Out (Alt+-)"
+              >
+                −
+              </button>
+              <button
+                onClick={handleZoomReset}
+                className="px-2 py-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-[10px] font-black min-w-[40px] border-r border-gray-300 dark:border-gray-600"
+                title="Reset Zoom"
+              >
+                {Math.round((fontSize / 14) * 100)}%
+              </button>
+              <button
+                onClick={handleZoomIn}
+                className="px-3 py-1 text-[#0078d4] hover:bg-gray-100 dark:hover:bg-gray-700 font-bold text-xs transition-colors"
+                title="Zoom In (Alt++)"
+              >
+                +
+              </button>
+            </div>
           </div>
         </div>
-        
-        <div className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 whitespace-nowrap min-w-[70px] text-right">
-          {isExecuting && <span className="text-blue-500 animate-pulse">Executing...</span>}
-        </div>
       </div>
-      
+
       {/* Editor Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Line Numbers Gutter */}
         <div 
           ref={lineNumbersRef}
-          className="w-10 bg-[#f0f0f0] dark:bg-[#1e1e1e] text-gray-400 dark:text-gray-600 text-right py-4 pr-2 text-[11px] font-mono select-none border-r border-gray-200 dark:border-gray-800 leading-6 overflow-hidden pointer-events-none"
+          className="w-12 bg-[#f0f0f0] dark:bg-[#1e1e1e] text-gray-400 dark:text-gray-600 text-right py-4 pr-3 font-mono select-none border-r border-gray-200 dark:border-gray-800 overflow-hidden pointer-events-none transition-all"
+          style={{ fontSize: `${fontSize}px`, lineHeight: `${fontSize * 1.5}px` }}
         >
           {getLineNumbers().map((num) => (
             <div key={num}>{num}</div>
@@ -299,7 +351,8 @@ export function QueryEditor({
           {/* Highlight Overlay */}
           <div 
             ref={highlightRef}
-            className="absolute inset-0 p-4 font-mono text-sm leading-6 whitespace-pre break-words text-transparent pointer-events-none z-0 overflow-hidden"
+            className="absolute inset-0 p-4 font-mono whitespace-pre break-words text-transparent pointer-events-none z-0 overflow-hidden transition-all"
+            style={{ fontSize: `${fontSize}px`, lineHeight: `${fontSize * 1.5}px` }}
           >
             {query.split(new RegExp(`(${highlightTerm})`, 'gi')).map((part, i) => (
               part.toLowerCase() === (highlightTerm || '').toLowerCase() 
@@ -311,7 +364,8 @@ export function QueryEditor({
           {/* Actual Textarea */}
           <textarea
             ref={textareaRef}
-            className="absolute inset-0 w-full h-full p-4 bg-transparent dark:text-gray-300 font-mono text-sm leading-6 outline-none resize-none z-10 overflow-auto"
+            className="absolute inset-0 w-full h-full p-4 bg-transparent dark:text-gray-300 font-mono outline-none resize-none z-10 overflow-auto transition-all"
+            style={{ fontSize: `${fontSize}px`, lineHeight: `${fontSize * 1.5}px` }}
             value={query}
             onChange={(e) => { vibrate(2); onQueryChange(e.target.value); }}
             onScroll={syncScroll}

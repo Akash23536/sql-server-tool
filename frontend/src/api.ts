@@ -25,6 +25,7 @@ export interface DbObject {
   objectId?: number;
   createDate?: string;
   modifyDate?: string;
+  existsInCompareDb?: number;
 }
 
 export interface Database {
@@ -52,7 +53,8 @@ export type ObjectTypeFilter =
   | 'table_valued_functions' 
   | 'inline_table_functions' 
   | 'triggers' 
-  | 'synonyms';
+  | 'synonyms'
+  | 'jobs';
 
 // Object type options for dropdown
 export const OBJECT_TYPE_OPTIONS: { value: ObjectTypeFilter; label: string }[] = [
@@ -65,6 +67,7 @@ export const OBJECT_TYPE_OPTIONS: { value: ObjectTypeFilter; label: string }[] =
   { value: 'inline_table_functions', label: 'Inline Table Functions' },
   { value: 'triggers', label: 'Triggers' },
   { value: 'synonyms', label: 'Synonyms' },
+  { value: 'jobs', label: 'Agent Jobs' },
 ];
 
 // Connect to SQL Server
@@ -125,7 +128,8 @@ export const getObjects = async (
   objectType: ObjectTypeFilter = 'all',
   pageNumber: number = 1,
   pageSize: number = 20,
-  searchTerm?: string
+  searchTerm?: string,
+  compareWith?: string
 ): Promise<PagedResponse<DbObject>> => {
   const params = new URLSearchParams({ 
     database, 
@@ -136,6 +140,10 @@ export const getObjects = async (
   
   if (searchTerm) {
     params.append('searchTerm', searchTerm);
+  }
+
+  if (compareWith) {
+    params.append('compareWith', compareWith);
   }
   
   const response = await fetch(`${API_BASE}/objects?${params}`);
@@ -161,9 +169,21 @@ export const getObjectScript = async (database: string, objectName: string, obje
   return data.script;
 };
 
-// Search in scripts
-export const searchScripts = async (database: string, searchTerm: string, objectType: string = 'all'): Promise<DbObject[]> => {
-  const params = new URLSearchParams({ database, searchTerm, type: objectType });
+// Search in scripts with pagination
+export const searchScripts = async (
+  database: string, 
+  searchTerm: string, 
+  objectType: string = 'all',
+  pageNumber: number = 1,
+  pageSize: number = 20
+): Promise<PagedResponse<DbObject>> => {
+  const params = new URLSearchParams({ 
+    database, 
+    searchTerm, 
+    type: objectType,
+    pageNumber: pageNumber.toString(),
+    pageSize: pageSize.toString()
+  });
   const response = await fetch(`${API_BASE}/search-scripts?${params}`);
   if (!response.ok) {
     const error = await response.json();

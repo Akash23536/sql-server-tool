@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type MouseEvent } from 'react';
 import { getModifiedObjects } from '../api';
 import type { DbObject } from '../api';
+import { ObjectContextMenu } from './ObjectContextMenu';
 import './ModifiedObjects.css';
 
 interface ModifiedObjectsProps {
@@ -21,7 +22,6 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isOpen && database) {
@@ -49,16 +49,6 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
   }, [hasMore, isLoadingMore, isLoading, page, isOpen]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: Event) => {
-      if (contextMenuRef.current && e.target instanceof Node && !contextMenuRef.current.contains(e.target)) {
-        setContextMenu(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const loadModifiedObjects = async (pageNumber: number) => {
     try {
@@ -92,12 +82,6 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
     e.preventDefault();
     setSelectedRow(obj.objectId || null);
     setContextMenu({ x: e.clientX, y: e.clientY, obj });
-  };
-
-  const handleMenuAction = (action: string) => {
-    if (!contextMenu) return;
-    onAction(contextMenu.obj, action);
-    setContextMenu(null);
   };
 
   if (!isOpen) return null;
@@ -150,25 +134,6 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
                   </tbody>
                 </table>
               </div>
-              {contextMenu && (
-                <div
-                  ref={contextMenuRef}
-                  className="modified-context-menu"
-                  style={{ top: contextMenu.y, left: contextMenu.x }}
-                >
-                  {(contextMenu.obj.objectType === 'U' || contextMenu.obj.objectType === 'V') && (
-                    <>
-                      <div className="menu-item" onClick={() => handleMenuAction('select_top_50')}>🔍 Select Top 50</div>
-                      <div className="menu-divider" />
-                    </>
-                  )}
-                  <div className="menu-item" onClick={() => handleMenuAction('create')}>📄 Create Script</div>
-                  <div className="menu-item" onClick={() => handleMenuAction('alter')}>✏️ Alter Script</div>
-                  <div className="menu-item" onClick={() => handleMenuAction('drop')}>🗑️ Drop Script</div>
-                  <div className="menu-divider" />
-                  <div className="menu-item" onClick={() => handleMenuAction('rename')}>📝 Rename</div>
-                </div>
-              )}
 
               <div ref={loadMoreRef} className="load-more-trigger">
                 {isLoadingMore ? 'Loading more...' : hasMore ? 'Scroll to load more' : `Loaded ${objects.length} / ${totalCount}`}
@@ -181,6 +146,16 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
           <button className="btn-close" onClick={onClose}>Close</button>
         </div>
       </div>
+
+      {contextMenu && (
+        <ObjectContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          obj={contextMenu.obj}
+          onAction={onAction}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

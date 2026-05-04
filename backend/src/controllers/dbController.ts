@@ -136,6 +136,9 @@ export const getObjects = async (req: Request, res: Response) => {
     const countResult = await pool.query(countQuery);
     const totalCount = countResult.recordset[0]?.totalCount || 0;
 
+    const compareWith = req.query.compareWith ? decodeURIComponent(req.query.compareWith as string) : null;
+    const safeCompareDb = compareWith ? compareWith.replace(/\[/g, '').replace(/\]/g, '') : null;
+
     const dataQuery = `
       SELECT 
         o.name AS objectName,
@@ -153,6 +156,11 @@ export const getObjects = async (req: Request, res: Response) => {
         o.create_date,
         o.modify_date,
         o.object_id AS objectId
+        ${safeCompareDb ? `, CASE WHEN EXISTS (
+          SELECT 1 FROM [${safeCompareDb}].sys.objects t 
+          INNER JOIN [${safeCompareDb}].sys.schemas ts ON t.schema_id = ts.schema_id
+          WHERE t.name = o.name AND t.type = o.type AND ts.name = s.name
+        ) THEN 1 ELSE 0 END AS existsInCompareDb` : ''}
       FROM sys.objects o
       INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
       WHERE o.is_ms_shipped = 0
@@ -307,8 +315,21 @@ export const getScript = async (req: Request, res: Response) => {
         if (objectType === 'TABLE' || objectType === 'BASE TABLE') {
           script = `-- Alter Table: ${qualifiedName}\n-- Use this template to modify an existing table\nALTER TABLE ${qualifiedName}\nADD [ColumnName] datatype NULL;\n\n-- To drop a column:\n-- ALTER TABLE ${qualifiedName} DROP COLUMN ColumnName;\n\n-- To rename:\n-- EXEC sp_rename '${schemaDotName}', 'New${safeObjName}';`;
         } else {
-          script = `-- Alter ${objectType}: ${qualifiedName}\n-- Modify the object as needed\n${baseScript}`;
+          // Replace the first 'CREATE' with 'ALTER' (case-insensitive)
+          const alteredScript = baseScript.replace(/\bCREATE\b/i, 'ALTER');
+          script = alteredScript;
         }
+        break;
+      case 'create_or_alter':
+        if (objectType === 'TABLE' || objectType === 'BASE TABLE') {
+          script = baseScript;
+        } else {
+          script = baseScript.replace(/\bCREATE\b/i, 'CREATE OR ALTER');
+        }
+        break;
+      case 'drop_and_create':
+        const dropPart = `-- Drop ${objectType}: ${qualifiedName}\nIF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'${qualifiedName}') AND type in (N'U', N'V', 'P', 'FN', 'TF', 'IF', 'TR'))\nDROP ${objectType === 'TABLE' || objectType === 'BASE TABLE' ? 'TABLE' : objectType} ${qualifiedName};\nGO\n\n`;
+        script = dropPart + baseScript;
         break;
       case 'drop':
         script = `-- Drop ${objectType}: ${qualifiedName}\nDROP ${objectType === 'TABLE' || objectType === 'BASE TABLE' ? 'TABLE' : objectType} ${qualifiedName};`;
@@ -317,18 +338,103 @@ export const getScript = async (req: Request, res: Response) => {
         script = `-- Rename ${objectType}: ${qualifiedName}\nEXEC sp_rename '${schemaDotName}', 'New${safeObjName}';`;
         break;
       case 'select_top_50':
-        const columnsResult = await pool!.query(`
+        const colsQuery = `
+          SELECT COLUMN_NAME 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_NAME = '${safeObjName}'
+            ${safeSchemaName ? `AND TABLE_SCHEMA = '${safeSchemaName}'` : ''}
+          ORDER BY ORDINAL_POSITION
+        `;
+        const selectCols = await pool!.query(colsQuery);
+        if (selectCols.recordset.length > 0) {
+          const columns = selectCols.recordset.map((c: any) => `[${c.COLUMN_NAME}]`).join(',\n  ');
+          script = `SELECT TOP 50\n  ${columns}\nFROM ${qualifiedName}`;
+        } else {
+          script = `SELECT TOP 50 * FROM ${qualifiedName}`;
+        }
+        break;
+      case 'insert':
+        const insertCols = await pool!.query(`
           SELECT COLUMN_NAME 
           FROM INFORMATION_SCHEMA.COLUMNS 
           WHERE TABLE_NAME = '${safeObjName}'
             ${safeSchemaName ? `AND TABLE_SCHEMA = '${safeSchemaName}'` : ''}
           ORDER BY ORDINAL_POSITION
         `);
-        if (columnsResult.recordset.length > 0) {
-          const columns = columnsResult.recordset.map((c: any) => `[${c.COLUMN_NAME}]`).join(',\n  ');
-          script = `SELECT TOP 50\n  ${columns}\nFROM ${qualifiedName}`;
+        const colList = insertCols.recordset.map((c: any) => `[${c.COLUMN_NAME}]`).join(', ');
+        const valList = insertCols.recordset.map((c: any) => `<${c.COLUMN_NAME}>`).join(', ');
+        script = `INSERT INTO ${qualifiedName}\n  (${colList})\nVALUES\n  (${valList})`;
+        break;
+      case 'update':
+        const updateCols = await pool!.query(`
+          SELECT COLUMN_NAME 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_NAME = '${safeObjName}'
+            ${safeSchemaName ? `AND TABLE_SCHEMA = '${safeSchemaName}'` : ''}
+          ORDER BY ORDINAL_POSITION
+        `);
+        const setList = updateCols.recordset.map((c: any) => `[${c.COLUMN_NAME}] = <${c.COLUMN_NAME}>`).join(',\n  ');
+        script = `UPDATE ${qualifiedName}\nSET\n  ${setList}\nWHERE <Search Conditions>`;
+        break;
+      case 'delete':
+        script = `DELETE FROM ${qualifiedName}\nWHERE <Search Conditions>`;
+        break;
+      case 'execute':
+        if (objectType === 'PROCEDURE' || objectType === 'P' || objectType === 'PROC') {
+          const params = await pool!.query(`
+            SELECT 
+              PARAMETER_NAME,
+              DATA_TYPE
+            FROM INFORMATION_SCHEMA.PARAMETERS
+            WHERE SPECIFIC_NAME = '${safeObjName}'
+              ${safeSchemaName ? `AND SPECIFIC_SCHEMA = '${safeSchemaName}'` : ''}
+          `);
+          const paramList = params.recordset.map((p: any) => `  ${p.PARAMETER_NAME} = <${p.PARAMETER_NAME.substring(1)}>`).join(',\n');
+          script = paramList ? `EXECUTE ${qualifiedName}\n${paramList}` : `EXECUTE ${qualifiedName}`;
         } else {
-          script = `SELECT TOP 50 * FROM ${qualifiedName}`;
+          // Functions (FN, TF, IF)
+          const fnParams = await pool!.query(`
+            SELECT 
+              PARAMETER_NAME,
+              DATA_TYPE
+            FROM INFORMATION_SCHEMA.PARAMETERS
+            WHERE SPECIFIC_NAME = '${safeObjName}'
+              ${safeSchemaName ? `AND SPECIFIC_SCHEMA = '${safeSchemaName}'` : ''}
+              AND PARAMETER_MODE = 'IN'
+            ORDER BY ORDINAL_POSITION
+          `);
+          const fnParamList = fnParams.recordset.map((p: any) => `<${p.PARAMETER_NAME.substring(1)}>`).join(', ');
+          
+          if (objectType === 'SCALAR FUNCTION' || objectType === 'FN') {
+            script = `SELECT ${qualifiedName}(${fnParamList})`;
+          } else {
+            // Table-valued (TF) and Inline Table (IF) functions
+            script = `SELECT * FROM ${qualifiedName}(${fnParamList})`;
+          }
+        }
+        break;
+      case 'insert_data':
+        const dataResult = await pool!.query(`SELECT TOP 100 * FROM ${qualifiedName}`);
+        if (dataResult.recordset.length === 0) {
+          script = `-- No data found in ${qualifiedName}`;
+        } else {
+          const columns = Object.keys(dataResult.recordset[0]);
+          const insertHeader = `-- Data INSERT script for ${qualifiedName} (Top 100 rows)\nINSERT INTO ${qualifiedName}\n  (${columns.map(c => `[${c}]`).join(', ')})\nVALUES\n`;
+          
+          const rows = dataResult.recordset.map((row: any) => {
+            const values = columns.map(col => {
+              const val = row[col];
+              if (val === null || val === undefined) return 'NULL';
+              if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+              if (val instanceof Date) return `'${val.toISOString().replace('T', ' ').replace('Z', '')}'`;
+              if (Buffer.isBuffer(val)) return `0x${val.toString('hex')}`;
+              if (typeof val === 'boolean') return val ? '1' : '0';
+              return val;
+            }).join(', ');
+            return `  (${values})`;
+          }).join(',\n');
+          
+          script = insertHeader + rows + ';';
         }
         break;
       default:
@@ -356,20 +462,38 @@ export const executeQuery = async (req: Request, res: Response) => {
     const dbName = decodeURIComponent(database);
     await pool.query(`USE [${dbName.replace(/\[/g, '').replace(/\]/g, '')}]`);
 
-    // Using request().query() to ensure all recordsets are returned
-    const result = await pool.request().query(query);
-    
-    const results = ((result.recordsets as any) || []).map((rs: any) => ({
-      columns: rs && rs.length > 0 ? Object.keys(rs[0]) : [],
-      rows: rs,
-      rowCount: rs ? rs.length : 0
-    }));
+    // Split on GO batch separator (just like SSMS does)
+    // GO must be on its own line (optionally with whitespace)
+    const batches = query
+      .split(/^\s*GO\s*$/gmi)
+      .map((b: string) => b.trim())
+      .filter((b: string) => b.length > 0);
+
+    const allResults: any[] = [];
+    let totalRowsAffected = 0;
+    let totalStatements = 0;
+
+    for (const batch of batches) {
+      const result = await pool.request().query(batch);
+      
+      const batchResults = ((result.recordsets as any) || []).map((rs: any) => ({
+        columns: rs && rs.length > 0 ? Object.keys(rs[0]) : [],
+        rows: rs,
+        rowCount: rs ? rs.length : 0
+      }));
+      allResults.push(...batchResults);
+
+      if (result.rowsAffected && result.rowsAffected.length > 0) {
+        totalRowsAffected += result.rowsAffected.reduce((a: number, b: number) => a + b, 0);
+        totalStatements += result.rowsAffected.length;
+      }
+    }
 
     res.json({
-      results,
-      message: result.rowsAffected && result.rowsAffected.length > 0
-        ? `${result.rowsAffected.reduce((a, b) => a + b, 0)} row(s) affected across ${result.rowsAffected.length} statement(s)`
-        : 'Query executed successfully'
+      results: allResults,
+      message: totalStatements > 0
+        ? `${totalRowsAffected} row(s) affected across ${totalStatements} statement(s) in ${batches.length} batch(es)`
+        : `Query executed successfully (${batches.length} batch${batches.length > 1 ? 'es' : ''})`
     });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -391,6 +515,9 @@ export const searchScripts = async (req: Request, res: Response) => {
     const dbName = decodeURIComponent(database as string);
     const search = decodeURIComponent(searchTerm as string);
     const objectTypeFilter = (type as string) || 'all';
+    const pageNum = parseInt(req.query.pageNumber as string) || 1;
+    const size = parseInt(req.query.pageSize as string) || 20;
+    const offset = (pageNum - 1) * size;
 
     await pool.query(`USE [${dbName.replace(/\[/g, '').replace(/\]/g, '')}]`);
 
@@ -403,37 +530,103 @@ export const searchScripts = async (req: Request, res: Response) => {
         'scalar_functions': "'FN'",
         'table_valued_functions': "'TF'",
         'triggers': "'TR'",
-        'synonyms': "'SN'"
+        'synonyms': "'SN'",
+        'jobs': "'JOB'"
       };
       return typeMap[objType?.toLowerCase()] || typeMap['all'];
     };
 
     const typeFilter = getTypeFilter(objectTypeFilter);
 
-    // Search in sys.sql_modules (Procs, Views, etc.) AND sys.columns (Tables structure)
+    // Enhanced search with pagination
     const result = await pool.query(`
-      SELECT DISTINCT
-        o.name AS objectName,
-        o.type AS objectType,
-        s.name AS schemaName,
-        o.create_date,
-        o.modify_date,
-        o.object_id AS objectId
-      FROM sys.objects o
-      INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
-      LEFT JOIN sys.sql_modules m ON o.object_id = m.object_id
-      LEFT JOIN sys.columns c ON o.object_id = c.object_id
-      WHERE (
-          m.definition LIKE '%${search.replace(/'/g, "''")}%' OR
-          c.name LIKE '%${search.replace(/'/g, "''")}%' OR
-          o.name LIKE '%${search.replace(/'/g, "''")}%'
-        )
-        AND o.type IN (${typeFilter})
-        AND o.is_ms_shipped = 0
-      ORDER BY o.name
+      WITH CombinedResults AS (
+        SELECT DISTINCT
+          o.name COLLATE DATABASE_DEFAULT AS objectName,
+          CASE LTRIM(RTRIM(o.type))
+            WHEN 'U' THEN 'TABLE'
+            WHEN 'V' THEN 'VIEW'
+            WHEN 'P' THEN 'PROCEDURE'
+            WHEN 'TF' THEN 'TABLE VALUED FUNCTION'
+            WHEN 'FN' THEN 'SCALAR FUNCTION'
+            WHEN 'IF' THEN 'INLINE TABLE FUNCTION'
+            WHEN 'TR' THEN 'TRIGGER'
+            WHEN 'SN' THEN 'SYNONYM'
+            ELSE LTRIM(RTRIM(o.type))
+          END COLLATE DATABASE_DEFAULT AS objectType,
+          s.name COLLATE DATABASE_DEFAULT AS schemaName,
+          o.create_date AS createDate,
+          o.modify_date AS modifyDate,
+          CAST(o.object_id AS VARCHAR(100)) COLLATE DATABASE_DEFAULT AS objectId
+        FROM sys.sql_modules m
+        INNER JOIN sys.objects o ON m.object_id = o.object_id
+        INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+        WHERE m.definition LIKE N'%${search.replace(/'/g, "''")}%'
+          AND o.type IN (${typeFilter})
+          AND o.is_ms_shipped = 0
+
+        UNION ALL
+
+        SELECT DISTINCT
+          o.name COLLATE DATABASE_DEFAULT AS objectName,
+          CASE LTRIM(RTRIM(o.type))
+            WHEN 'U' THEN 'TABLE'
+            WHEN 'V' THEN 'VIEW'
+            WHEN 'P' THEN 'PROCEDURE'
+            WHEN 'TF' THEN 'TABLE VALUED FUNCTION'
+            WHEN 'FN' THEN 'SCALAR FUNCTION'
+            WHEN 'IF' THEN 'INLINE TABLE FUNCTION'
+            WHEN 'TR' THEN 'TRIGGER'
+            WHEN 'SN' THEN 'SYNONYM'
+            ELSE LTRIM(RTRIM(o.type))
+          END COLLATE DATABASE_DEFAULT AS objectType,
+          s.name COLLATE DATABASE_DEFAULT AS schemaName,
+          o.create_date AS createDate,
+          o.modify_date AS modifyDate,
+          CAST(o.object_id AS VARCHAR(100)) COLLATE DATABASE_DEFAULT AS objectId
+        FROM sys.objects o
+        INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+        LEFT JOIN sys.columns c ON o.object_id = c.object_id
+        WHERE (
+            o.name LIKE N'%${search.replace(/'/g, "''")}%' OR
+            c.name LIKE N'%${search.replace(/'/g, "''")}%'
+          )
+          AND o.type IN (${typeFilter})
+          AND o.is_ms_shipped = 0
+          AND o.object_id NOT IN (SELECT object_id FROM sys.sql_modules WHERE definition LIKE N'%${search.replace(/'/g, "''")}%')
+
+        UNION ALL
+
+        SELECT DISTINCT
+          j.name COLLATE DATABASE_DEFAULT AS objectName,
+          'AGENT JOB' COLLATE DATABASE_DEFAULT AS objectType,
+          'msdb' COLLATE DATABASE_DEFAULT AS schemaName,
+          j.date_created AS createDate,
+          j.date_modified AS modifyDate,
+          CAST(j.job_id AS VARCHAR(100)) COLLATE DATABASE_DEFAULT AS objectId
+        FROM msdb.dbo.sysjobs j
+        JOIN msdb.dbo.sysjobsteps s ON j.job_id = s.job_id
+        WHERE (
+            s.command LIKE N'%${search.replace(/'/g, "''")}%' OR
+            j.name LIKE N'%${search.replace(/'/g, "''")}%'
+          )
+          AND (${objectTypeFilter === 'all' || objectTypeFilter === 'jobs' ? '1=1' : '1=0'})
+      ),
+      TotalCount AS (SELECT COUNT(*) AS total FROM CombinedResults)
+      SELECT *, (SELECT total FROM TotalCount) AS totalRows
+      FROM CombinedResults
+      ORDER BY objectName
+      OFFSET ${offset} ROWS FETCH NEXT ${size} ROWS ONLY
     `);
 
-    res.json(result.recordset);
+    const totalCount = result.recordset.length > 0 ? result.recordset[0].totalRows : 0;
+    res.json({
+      objects: result.recordset,
+      total: totalCount,
+      hasMore: offset + size < totalCount,
+      page: pageNum,
+      pageSize: size
+    });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
@@ -470,7 +663,16 @@ export const getModifiedObjects = async (req: Request, res: Response) => {
     const query = `
       SELECT 
         o.name AS objectName,
-        o.type AS objectType,
+        CASE o.type
+          WHEN 'U' THEN 'TABLE'
+          WHEN 'V' THEN 'VIEW'
+          WHEN 'P' THEN 'PROCEDURE'
+          WHEN 'TF' THEN 'TABLE VALUED FUNCTION'
+          WHEN 'FN' THEN 'SCALAR FUNCTION'
+          WHEN 'IF' THEN 'INLINE TABLE FUNCTION'
+          WHEN 'TR' THEN 'TRIGGER'
+          WHEN 'SN' THEN 'SYNONYM'
+        END AS objectType,
         s.name AS schemaName,
         o.object_id AS objectId,
         o.create_date AS createDate,
