@@ -157,7 +157,6 @@ export function ExcelTool({ isOpen, onClose, database }: ExcelToolProps) {
       }
 
       setSuccess(`Successfully imported ${totalInserted} rows into ${targetTable}.`);
-      setImportFile(null);
       setPreviewData([]);
       setColumns([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
