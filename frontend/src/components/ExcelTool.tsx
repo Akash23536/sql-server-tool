@@ -16,7 +16,6 @@ export function ExcelTool({ isOpen, onClose, database }: ExcelToolProps) {
   const [success, setSuccess] = useState<string | null>(null);
   
   // Import states
-  const [importFile, setImportFile] = useState<File | null>(null);
   const [targetTable, setTargetTable] = useState('');
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -26,13 +25,11 @@ export function ExcelTool({ isOpen, onClose, database }: ExcelToolProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
-      setImportFile(null);
       setPreviewData([]);
       setColumns([]);
       return;
     }
 
-    setImportFile(file);
     setError(null);
     setSuccess(null);
     
