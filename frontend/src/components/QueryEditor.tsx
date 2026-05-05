@@ -354,34 +354,40 @@ export function QueryEditor({
           {/* Highlight Overlay */}
           <div 
             ref={highlightRef}
-            className="absolute inset-0 p-4 font-mono text-transparent pointer-events-none z-0 overflow-hidden transition-all"
+            className="absolute inset-0 p-4 font-mono text-transparent pointer-events-none z-0 overflow-hidden transition-all border border-transparent"
             style={{ 
+              fontFamily: '"Consolas", "Courier New", monospace',
               fontSize: `${fontSize}px`, 
               lineHeight: `${fontSize * 1.5}px`,
               whiteSpace: 'pre',
-              wordWrap: 'normal'
+              wordWrap: 'normal',
+              tabSize: 4,
+              letterSpacing: 'normal'
             }}
           >
             {highlightTerm && highlightTerm.trim() !== '' ? (
-              query.split(new RegExp(`(${highlightTerm.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi')).map((part, i) => (
+              query.replace(/\r\n/g, '\n').split(new RegExp(`(${highlightTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')).map((part, i) => (
                 part.toLowerCase() === highlightTerm.toLowerCase() 
                   ? <mark key={i} className="bg-red-500/50 dark:bg-red-600/60 text-transparent rounded-sm">{part}</mark>
                   : part
               ))
             ) : (
-              query
+              query.replace(/\r\n/g, '\n')
             )}
           </div>
 
           {/* Actual Textarea */}
           <textarea
             ref={textareaRef}
-            className="absolute inset-0 w-full h-full p-4 bg-transparent dark:text-gray-300 font-mono outline-none resize-none z-10 overflow-auto transition-all"
+            className="absolute inset-0 w-full h-full p-4 bg-transparent dark:text-gray-300 font-mono outline-none border-none resize-none z-10 overflow-auto transition-all"
             style={{ 
+              fontFamily: '"Consolas", "Courier New", monospace',
               fontSize: `${fontSize}px`, 
               lineHeight: `${fontSize * 1.5}px`,
               whiteSpace: 'pre',
-              wordWrap: 'normal'
+              wordWrap: 'normal',
+              tabSize: 4,
+              letterSpacing: 'normal'
             }}
             value={query}
             onChange={(e) => { vibrate(2); onQueryChange(e.target.value); }}
