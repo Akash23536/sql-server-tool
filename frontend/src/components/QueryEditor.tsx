@@ -13,6 +13,7 @@ interface QueryEditorProps {
   onShowAIResult?: (message: string) => void;
   isAIModalOpen: boolean;
   onToggleAI: (open: boolean) => void;
+  queryError?: string | null;
 }
 
 export function QueryEditor({ 
@@ -26,9 +27,11 @@ export function QueryEditor({
   onQueryChange,
   onShowAIResult,
   isAIModalOpen,
-  onToggleAI
+  onToggleAI,
+  queryError
 }: QueryEditorProps) {
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiModel, setAiModel] = useState('llama-3.3-70b-versatile');
   const [isAILoading, setIsAILoading] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -165,7 +168,7 @@ export function QueryEditor({
     
     setIsAILoading(true);
     try {
-      const result = await askAI(query, aiPrompt);
+      const result = await askAI(query, aiPrompt, queryError || undefined, aiModel);
       if (onShowAIResult) {
         onShowAIResult(result.message);
       }
@@ -351,27 +354,42 @@ export function QueryEditor({
           {/* Highlight Overlay */}
           <div 
             ref={highlightRef}
-            className="absolute inset-0 p-4 font-mono whitespace-pre break-words text-transparent pointer-events-none z-0 overflow-hidden transition-all"
-            style={{ fontSize: `${fontSize}px`, lineHeight: `${fontSize * 1.5}px` }}
+            className="absolute inset-0 p-4 font-mono text-transparent pointer-events-none z-0 overflow-hidden transition-all"
+            style={{ 
+              fontSize: `${fontSize}px`, 
+              lineHeight: `${fontSize * 1.5}px`,
+              whiteSpace: 'pre',
+              wordWrap: 'normal'
+            }}
           >
-            {query.split(new RegExp(`(${highlightTerm})`, 'gi')).map((part, i) => (
-              part.toLowerCase() === (highlightTerm || '').toLowerCase() 
-                ? <mark key={i} className="bg-yellow-200 dark:bg-yellow-900/50 border-b-2 border-yellow-500 text-transparent">{part}</mark>
-                : part
-            ))}
+            {highlightTerm && highlightTerm.trim() !== '' ? (
+              query.split(new RegExp(`(${highlightTerm.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi')).map((part, i) => (
+                part.toLowerCase() === highlightTerm.toLowerCase() 
+                  ? <mark key={i} className="bg-red-500/50 dark:bg-red-600/60 text-transparent rounded-sm">{part}</mark>
+                  : part
+              ))
+            ) : (
+              query
+            )}
           </div>
 
           {/* Actual Textarea */}
           <textarea
             ref={textareaRef}
             className="absolute inset-0 w-full h-full p-4 bg-transparent dark:text-gray-300 font-mono outline-none resize-none z-10 overflow-auto transition-all"
-            style={{ fontSize: `${fontSize}px`, lineHeight: `${fontSize * 1.5}px` }}
+            style={{ 
+              fontSize: `${fontSize}px`, 
+              lineHeight: `${fontSize * 1.5}px`,
+              whiteSpace: 'pre',
+              wordWrap: 'normal'
+            }}
             value={query}
             onChange={(e) => { vibrate(2); onQueryChange(e.target.value); }}
             onScroll={syncScroll}
             onKeyDown={handleKeyDown}
             placeholder={isOffline ? "-- Database is offline" : "-- Write your SQL query here\nSELECT * FROM TableName"}
             spellCheck={false}
+            wrap="off"
             disabled={isOffline}
           />
         </div>
@@ -381,14 +399,32 @@ export function QueryEditor({
       {isAIModalOpen && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
           <div className="bg-white dark:bg-[#252526] w-full max-w-md p-5 border border-gray-300 dark:border-gray-700 shadow-2xl rounded-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-2xl">🤖</span>
-              <div>
-                <h3 className="text-sm font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight">Ask Groq AI</h3>
-                <p className="text-[10px] text-gray-500 font-bold uppercase">Llama 3.3 • SQL Server Expert</p>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🤖</span>
+                <div>
+                  <h3 className="text-sm font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight">Ask Groq AI</h3>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase">SQL Server Expert</p>
+                </div>
               </div>
+              <select
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                className="bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded px-2 py-1 outline-none"
+              >
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                <option value="gemma2-9b-it">Gemma2 9B</option>
+              </select>
             </div>
             
+            {queryError && (
+              <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded text-xs text-red-600 dark:text-red-400 font-mono">
+                <span className="font-bold">ErrorContext:</span> {queryError.substring(0, 150)}{queryError.length > 150 ? '...' : ''}
+              </div>
+            )}
+
             <textarea
               className="w-full h-24 p-3 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-700 text-sm outline-none focus:border-[#0078d4] resize-none mb-4 dark:text-gray-200"
               placeholder="What do you want to do with this query? (e.g., 'Explain this', 'Optimize it', 'Convert to JOIN')"

@@ -3,12 +3,14 @@ import { Router, Request, Response } from 'express';
 const router = Router();
 
 router.post('/ask', async (req: Request, res: Response) => {
-  const { query, prompt } = req.body;
+  const { query, prompt, error, model } = req.body;
   const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey || apiKey === 'your_groq_api_key_here') {
     return res.status(401).json({ error: 'Groq API key not configured in backend .env file' });
   }
+
+  const userContent = `SQL Query:\n${query}\n\n${error ? `Execution Error:\n${error}\n\n` : ''}User Request: ${prompt}`;
 
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -18,7 +20,7 @@ router.post('/ask', async (req: Request, res: Response) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: model || 'llama-3.3-70b-versatile',
         messages: [
           {
             role: 'system',
@@ -26,7 +28,7 @@ router.post('/ask', async (req: Request, res: Response) => {
           },
           {
             role: 'user',
-            content: `SQL Query:\n${query}\n\nUser Request: ${prompt}`
+            content: userContent
           }
         ],
         temperature: 0.2,

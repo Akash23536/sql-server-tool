@@ -47,6 +47,7 @@ export interface PagedResponse<T> {
 export type ObjectTypeFilter = 
   | 'all' 
   | 'tables' 
+  | 'system_tables'
   | 'views' 
   | 'procedures' 
   | 'scalar_functions' 
@@ -54,12 +55,15 @@ export type ObjectTypeFilter =
   | 'inline_table_functions' 
   | 'triggers' 
   | 'synonyms'
+  | 'sequences'
+  | 'service_queues'
   | 'jobs';
 
 // Object type options for dropdown
 export const OBJECT_TYPE_OPTIONS: { value: ObjectTypeFilter; label: string }[] = [
   { value: 'all', label: 'All Objects' },
   { value: 'tables', label: 'Tables' },
+  { value: 'system_tables', label: 'System Tables' },
   { value: 'views', label: 'Views' },
   { value: 'procedures', label: 'Stored Procedures' },
   { value: 'scalar_functions', label: 'Scalar Functions' },
@@ -67,6 +71,8 @@ export const OBJECT_TYPE_OPTIONS: { value: ObjectTypeFilter; label: string }[] =
   { value: 'inline_table_functions', label: 'Inline Table Functions' },
   { value: 'triggers', label: 'Triggers' },
   { value: 'synonyms', label: 'Synonyms' },
+  { value: 'sequences', label: 'Sequences' },
+  { value: 'service_queues', label: 'Service Queues' },
   { value: 'jobs', label: 'Agent Jobs' },
 ];
 
@@ -218,13 +224,19 @@ export const disconnect = async (): Promise<void> => {
 export const getModifiedObjects = async (
   database: string,
   pageNumber: number = 1,
-  pageSize: number = 10
+  pageSize: number = 10,
+  searchTerm?: string
 ): Promise<{ objects: DbObject[]; page: number; pageSize: number; totalCount: number; hasMore: boolean }> => {
   const params = new URLSearchParams({
     database,
     pageNumber: pageNumber.toString(),
     pageSize: pageSize.toString(),
   });
+  
+  if (searchTerm) {
+    params.append('searchTerm', searchTerm);
+  }
+  
   const response = await fetch(`${API_BASE}/modified-objects?${params}`);
   if (!response.ok) {
     const error = await response.json();
@@ -234,12 +246,12 @@ export const getModifiedObjects = async (
 };
 
 // Ask AI
-export const askAI = async (query: string, prompt: string): Promise<{ message: string }> => {
+export const askAI = async (query: string, prompt: string, error?: string, model?: string): Promise<{ message: string }> => {
   // Use the AI specific endpoint
   const response = await fetch(`${API_BASE}/ai/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, prompt }),
+    body: JSON.stringify({ query, prompt, error, model }),
   });
   
   if (!response.ok) {

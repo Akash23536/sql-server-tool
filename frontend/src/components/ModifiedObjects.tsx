@@ -22,6 +22,8 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeSearchTerm, setActiveSearchTerm] = useState('');
 
   useEffect(() => {
     if (isOpen && database) {
@@ -29,7 +31,9 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
       setPage(1);
       setHasMore(false);
       setTotalCount(0);
-      loadModifiedObjects(1);
+      setSearchTerm('');
+      setActiveSearchTerm('');
+      loadModifiedObjects(1, '');
     }
   }, [isOpen, database]);
 
@@ -40,7 +44,7 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !isLoadingMore && !isLoading) {
-          loadModifiedObjects(page + 1);
+          loadModifiedObjects(page + 1, activeSearchTerm);
         }
       },
       { root: root instanceof HTMLElement ? root : null, threshold: 0.1 }
@@ -48,9 +52,18 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
 
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
-  }, [hasMore, isLoadingMore, isLoading, page, isOpen]);
+  }, [hasMore, isLoadingMore, isLoading, page, isOpen, activeSearchTerm]);
 
-  const loadModifiedObjects = async (pageNumber: number) => {
+  const executeSearch = () => {
+    setActiveSearchTerm(searchTerm);
+    setObjects([]);
+    setPage(1);
+    setHasMore(false);
+    setTotalCount(0);
+    loadModifiedObjects(1, searchTerm);
+  };
+
+  const loadModifiedObjects = async (pageNumber: number, search: string = activeSearchTerm) => {
     try {
       if (pageNumber === 1) {
         setIsLoading(true);
@@ -59,7 +72,7 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
       }
       setError(null);
 
-      const result = await getModifiedObjects(database, pageNumber, 10);
+      const result = await getModifiedObjects(database, pageNumber, 10, search);
       setObjects((prev) => (pageNumber === 1 ? result.objects : [...prev, ...result.objects]));
       setPage(result.page);
       setHasMore(result.hasMore);
@@ -95,6 +108,43 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
         </div>
 
         <div className="modal-body">
+          <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search modified objects..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  executeSearch();
+                }
+              }}
+              className="flex-1 px-3 py-1.5 text-[11px] bg-white dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:border-[#0078d4] dark:text-gray-200"
+            />
+            <button
+              onClick={executeSearch}
+              disabled={isLoading || isLoadingMore}
+              className="px-3 py-1.5 bg-[#0078d4] hover:bg-[#005a9e] disabled:opacity-50 text-white text-[11px] font-bold rounded shadow-sm transition-colors"
+            >
+              Search
+            </button>
+            {(activeSearchTerm || searchTerm) && (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setActiveSearchTerm('');
+                  setObjects([]);
+                  setPage(1);
+                  setHasMore(false);
+                  setTotalCount(0);
+                  loadModifiedObjects(1, '');
+                }}
+                className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-[11px] font-bold rounded shadow-sm transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           {isLoading && <div className="loading">Loading...</div>}
           {error && <div className="error-message">{error}</div>}
 

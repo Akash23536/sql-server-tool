@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import { getObjectScript } from '../api';
 import type { DbObject, Database } from '../api';
+import { DatabaseSearchSelector } from './DatabaseSearchSelector';
 import './ObjectCompare.css';
 
 interface ObjectCompareProps {
@@ -118,18 +119,12 @@ export function ObjectCompare({
             <div className="compare-arrow">➡️</div>
             <div className="control-group">
               <label>Target Database</label>
-              <select 
-                className="db-select"
-                value={targetDatabase} 
-                onChange={(e) => setTargetDatabase(e.target.value)}
-              >
-                <option value="">Select Database to Compare</option>
-                {databases.filter(db => db.name !== selectedDatabase).map(db => (
-                  <option key={db.name} value={db.name}>
-                    {db.status === 'OFFLINE' ? '🔴 ' : '🟢 '}{db.name}
-                  </option>
-                ))}
-              </select>
+              <DatabaseSearchSelector
+                databases={databases.filter(db => db.name !== selectedDatabase)}
+                selectedDatabase={targetDatabase}
+                onSelectDatabase={setTargetDatabase}
+                placeholder="Select Database to Compare"
+              />
             </div>
           </div>
 

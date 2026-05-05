@@ -48,8 +48,12 @@ export const getDatabases = async (req: Request, res: Response) => {
         name,
         state_desc as status
       FROM sys.databases 
-      WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')
-      ORDER BY name
+      ORDER BY 
+        CASE 
+          WHEN name IN ('master', 'tempdb', 'model', 'msdb') THEN 0 
+          ELSE 1 
+        END,
+        name
     `);
 
     const databases = result.recordset.map((row: any) => ({
@@ -84,15 +88,18 @@ export const getObjects = async (req: Request, res: Response) => {
 
     const getTypeFilter = (objType: string): string => {
       const typeMap: Record<string, string> = {
-        'all': "'U', 'V', 'P', 'TF', 'FN', 'IF', 'TR', 'SN'",
+        'all': "'U', 'V', 'P', 'TF', 'FN', 'IF', 'TR', 'SN', 'SO', 'S', 'IT', 'SQ'",
         'tables': "'U'",
+        'system_tables': "'S', 'IT'",
         'views': "'V'",
         'procedures': "'P'",
         'scalar_functions': "'FN'",
         'table_valued_functions': "'TF'",
         'inline_table_functions': "'IF'",
         'triggers': "'TR'",
-        'synonyms': "'SN'"
+        'synonyms': "'SN'",
+        'sequences': "'SO'",
+        'service_queues': "'SQ'"
       };
       return typeMap[objType?.toLowerCase()] || typeMap['all'];
     };
@@ -101,13 +108,16 @@ export const getObjects = async (req: Request, res: Response) => {
       const labelMap: Record<string, string> = {
         'all': 'ALL OBJECTS',
         'tables': 'TABLE',
+        'system_tables': 'SYSTEM TABLE',
         'views': 'VIEW',
         'procedures': 'PROCEDURE',
         'scalar_functions': 'SCALAR FUNCTION',
         'table_valued_functions': 'TABLE VALUED FUNCTION',
         'inline_table_functions': 'INLINE TABLE FUNCTION',
         'triggers': 'TRIGGER',
-        'synonyms': 'SYNONYM'
+        'synonyms': 'SYNONYM',
+        'sequences': 'SEQUENCE',
+        'service_queues': 'SERVICE QUEUE'
       };
       return labelMap[objType?.toLowerCase()] || 'ALL OBJECTS';
     };
@@ -125,11 +135,16 @@ export const getObjects = async (req: Request, res: Response) => {
         )`
       : '';
 
+    const isSystemDb = ['master', 'tempdb', 'model', 'msdb'].includes(dbName.toLowerCase());
+    const msShippedCondition = (objectType.toLowerCase() === 'system_tables' || objectType.toLowerCase() === 'all' || isSystemDb) 
+      ? "1=1" 
+      : "o.is_ms_shipped = 0";
+
     const countQuery = `
       SELECT COUNT(*) as totalCount
       FROM sys.objects o
       INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
-      WHERE o.is_ms_shipped = 0
+      WHERE ${msShippedCondition}
         AND o.type IN (${typeFilter})
         ${searchCondition}
     `;
@@ -144,6 +159,8 @@ export const getObjects = async (req: Request, res: Response) => {
         o.name AS objectName,
         CASE o.type
           WHEN 'U' THEN 'TABLE'
+          WHEN 'S' THEN 'SYSTEM TABLE'
+          WHEN 'IT' THEN 'INTERNAL TABLE'
           WHEN 'V' THEN 'VIEW'
           WHEN 'P' THEN 'PROCEDURE'
           WHEN 'TF' THEN 'TABLE VALUED FUNCTION'
@@ -151,6 +168,9 @@ export const getObjects = async (req: Request, res: Response) => {
           WHEN 'IF' THEN 'INLINE TABLE FUNCTION'
           WHEN 'TR' THEN 'TRIGGER'
           WHEN 'SN' THEN 'SYNONYM'
+          WHEN 'SO' THEN 'SEQUENCE'
+          WHEN 'SQ' THEN 'SERVICE QUEUE'
+          ELSE o.type
         END AS objectType,
         s.name AS schemaName,
         o.create_date,
@@ -163,7 +183,7 @@ export const getObjects = async (req: Request, res: Response) => {
         ) THEN 1 ELSE 0 END AS existsInCompareDb` : ''}
       FROM sys.objects o
       INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
-      WHERE o.is_ms_shipped = 0
+      WHERE ${msShippedCondition}
         AND o.type IN (${typeFilter})
         ${searchCondition}
       ORDER BY o.name
@@ -264,40 +284,200 @@ export const getScript = async (req: Request, res: Response) => {
 
     const getBaseScript = async (type: string): Promise<string> => {
       if (type === 'TABLE' || type === 'BASE TABLE') {
+        const objectId = safeSchemaName 
+          ? `OBJECT_ID('[${safeSchemaName}].[${safeObjName}]')` 
+          : `OBJECT_ID('[${safeObjName}]')`;
+
+        // 1. Get Columns with Identity and Computed info
         const cols = await pool!.query(`
           SELECT 
-            COLUMN_NAME,
-            DATA_TYPE,
-            IS_NULLABLE,
-            CHARACTER_MAXIMUM_LENGTH,
-            COLUMN_DEFAULT,
-            NUMERIC_PRECISION,
-            NUMERIC_SCALE
-          FROM INFORMATION_SCHEMA.COLUMNS
-          WHERE TABLE_NAME = '${safeObjName}'
-            ${safeSchemaName ? `AND TABLE_SCHEMA = '${safeSchemaName}'` : ''}
-          ORDER BY ORDINAL_POSITION
+            c.name AS COLUMN_NAME,
+            t.name AS DATA_TYPE,
+            c.is_nullable,
+            CASE 
+              WHEN t.name IN ('varchar', 'char', 'varbinary', 'binary') THEN c.max_length
+              WHEN t.name IN ('nvarchar', 'nchar') THEN c.max_length / 2
+              ELSE NULL
+            END AS CHARACTER_MAXIMUM_LENGTH,
+            c.precision AS NUMERIC_PRECISION,
+            c.scale AS NUMERIC_SCALE,
+            c.is_identity,
+            ic.seed_value,
+            ic.increment_value,
+            object_definition(c.default_object_id) AS COLUMN_DEFAULT,
+            cc.definition AS COMPUTED_DEFINITION
+          FROM sys.columns c
+          INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
+          LEFT JOIN sys.identity_columns ic ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+          LEFT JOIN sys.computed_columns cc ON c.object_id = cc.object_id AND c.column_id = cc.column_id
+          WHERE c.object_id = ${objectId}
+          ORDER BY c.column_id
+        `);
+
+        // 2. Get Primary Key info
+        const pk = await pool!.query(`
+          SELECT 
+            i.name AS PK_NAME,
+            i.type_desc AS PK_TYPE,
+            COL_NAME(ic.object_id, ic.column_id) AS COLUMN_NAME
+          FROM sys.indexes i
+          INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+          WHERE i.is_primary_key = 1 AND i.object_id = ${objectId}
+          ORDER BY ic.key_ordinal
+        `);
+
+        // 3. Get Foreign Keys
+        const fks = await pool!.query(`
+          SELECT 
+            f.name AS FK_NAME,
+            COL_NAME(fc.parent_object_id, fc.parent_column_id) AS ParentColumn,
+            OBJECT_SCHEMA_NAME(f.referenced_object_id) AS RefSchema,
+            OBJECT_NAME(f.referenced_object_id) AS RefTable,
+            COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS RefColumn,
+            f.delete_referential_action_desc,
+            f.update_referential_action_desc
+          FROM sys.foreign_keys f
+          INNER JOIN sys.foreign_key_columns fc ON f.object_id = fc.constraint_object_id
+          WHERE f.parent_object_id = ${objectId}
+        `);
+
+        // 4. Get Indexes (excluding PK)
+        const indexes = await pool!.query(`
+          SELECT 
+            i.name AS INDEX_NAME,
+            i.is_unique,
+            i.type_desc,
+            i.filter_definition,
+            COL_NAME(ic.object_id, ic.column_id) AS COLUMN_NAME,
+            ic.is_descending_key,
+            ic.is_included_column
+          FROM sys.indexes i
+          INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+          WHERE i.is_primary_key = 0 AND i.is_unique_constraint = 0 AND i.object_id = ${objectId}
+          ORDER BY i.index_id, ic.key_ordinal
+        `);
+
+        // 5. Get Check Constraints
+        const checks = await pool!.query(`
+          SELECT 
+            name AS CHECK_NAME,
+            definition AS CHECK_DEFINITION
+          FROM sys.check_constraints
+          WHERE parent_object_id = ${objectId}
         `);
 
         let createScript = `-- Table: ${qualifiedName}\nCREATE TABLE ${qualifiedName} (\n`;
-        createScript += cols.recordset.map((col: any) => {
-          let colDef = `  [${col.COLUMN_NAME}] ${col.DATA_TYPE}`;
+        
+        // Assemble columns
+        const colDefinitions = cols.recordset.map((col: any) => {
+          if (col.COMPUTED_DEFINITION) {
+            return `  [${col.COLUMN_NAME}] AS ${col.COMPUTED_DEFINITION}`;
+          }
+
+          let colDef = `  [${col.COLUMN_NAME}] [${col.DATA_TYPE}]`;
+          
           if (col.CHARACTER_MAXIMUM_LENGTH) {
             if (col.CHARACTER_MAXIMUM_LENGTH === -1) {
               colDef += '(MAX)';
-            } else if (col.CHARACTER_MAXIMUM_LENGTH > 0) {
+            } else {
               colDef += `(${col.CHARACTER_MAXIMUM_LENGTH})`;
             }
           } else if (col.NUMERIC_PRECISION && (col.DATA_TYPE.toLowerCase() === 'decimal' || col.DATA_TYPE.toLowerCase() === 'numeric')) {
-            colDef += `(${col.NUMERIC_PRECISION}${col.NUMERIC_SCALE !== null && col.NUMERIC_SCALE !== undefined ? ',' + col.NUMERIC_SCALE : ''})`;
+            colDef += `(${col.NUMERIC_PRECISION}, ${col.NUMERIC_SCALE})`;
           }
-          colDef += col.IS_NULLABLE === 'YES' ? ' NULL' : ' NOT NULL';
+
+          if (col.is_identity) {
+            colDef += ` IDENTITY(${col.seed_value},${col.increment_value})`;
+          }
+
+          colDef += col.is_nullable ? ' NULL' : ' NOT NULL';
+          
           if (col.COLUMN_DEFAULT) {
             colDef += ` DEFAULT ${col.COLUMN_DEFAULT}`;
           }
+          
           return colDef;
-        }).join(',\n');
-        createScript += '\n);';
+        });
+
+        // Add Primary Key constraint
+        if (pk.recordset.length > 0) {
+          const pkName = pk.recordset[0].PK_NAME;
+          const pkCols = pk.recordset.map((p: any) => `[${p.COLUMN_NAME}]`).join(', ');
+          colDefinitions.push(`  CONSTRAINT [${pkName}] PRIMARY KEY ${pk.recordset[0].PK_TYPE === 'CLUSTERED' ? 'CLUSTERED' : 'NONCLUSTERED'} (${pkCols})`);
+        }
+
+        // Add Check constraints
+        if (checks.recordset.length > 0) {
+          checks.recordset.forEach((cc: any) => {
+            colDefinitions.push(`  CONSTRAINT [${cc.CHECK_NAME}] CHECK ${cc.CHECK_DEFINITION}`);
+          });
+        }
+
+        createScript += colDefinitions.join(',\n');
+        createScript += '\n);\nGO\n\n';
+
+        // Add Foreign Keys
+        if (fks.recordset.length > 0) {
+          // Group multi-column FKs if any
+          const groupedFks: Record<string, any> = {};
+          fks.recordset.forEach((fk: any) => {
+            if (!groupedFks[fk.FK_NAME]) {
+              groupedFks[fk.FK_NAME] = {
+                name: fk.FK_NAME,
+                parentCols: [],
+                refSchema: fk.RefSchema,
+                refTable: fk.RefTable,
+                refCols: [],
+                onDelete: fk.delete_referential_action_desc,
+                onUpdate: fk.update_referential_action_desc
+              };
+            }
+            groupedFks[fk.FK_NAME].parentCols.push(`[${fk.ParentColumn}]`);
+            groupedFks[fk.FK_NAME].refCols.push(`[${fk.RefColumn}]`);
+          });
+
+          Object.values(groupedFks).forEach((fk: any) => {
+            createScript += `ALTER TABLE ${qualifiedName} WITH CHECK ADD CONSTRAINT [${fk.name}] FOREIGN KEY (${fk.parentCols.join(', ')})\n`;
+            createScript += `REFERENCES [${fk.refSchema}].[${fk.refTable}] (${fk.refCols.join(', ')})\n`;
+            if (fk.onDelete !== 'NO_ACTION') createScript += `ON DELETE ${fk.onDelete.replace('_', ' ')}\n`;
+            if (fk.onUpdate !== 'NO_ACTION') createScript += `ON UPDATE ${fk.onUpdate.replace('_', ' ')}\n`;
+            createScript += `GO\nALTER TABLE ${qualifiedName} CHECK CONSTRAINT [${fk.name}]\nGO\n\n`;
+          });
+        }
+
+        // Add Indexes
+        if (indexes.recordset.length > 0) {
+          const groupedIdx: Record<string, any> = {};
+          indexes.recordset.forEach((idx: any) => {
+            if (!groupedIdx[idx.INDEX_NAME]) {
+              groupedIdx[idx.INDEX_NAME] = {
+                name: idx.INDEX_NAME,
+                isUnique: idx.is_unique,
+                type: idx.type_desc,
+                filter: idx.filter_definition,
+                cols: [],
+                included: []
+              };
+            }
+            if (idx.is_included_column) {
+              groupedIdx[idx.INDEX_NAME].included.push(`[${idx.COLUMN_NAME}]`);
+            } else {
+              groupedIdx[idx.INDEX_NAME].cols.push(`[${idx.COLUMN_NAME}]${idx.is_descending_key ? ' DESC' : ''}`);
+            }
+          });
+
+          Object.values(groupedIdx).forEach((idx: any) => {
+            createScript += `CREATE ${idx.isUnique ? 'UNIQUE ' : ''}${idx.type === 'CLUSTERED' ? 'CLUSTERED ' : ''}INDEX [${idx.name}] ON ${qualifiedName} (${idx.cols.join(', ')})`;
+            if (idx.included.length > 0) {
+              createScript += ` INCLUDE (${idx.included.join(', ')})`;
+            }
+            if (idx.filter) {
+              createScript += ` WHERE ${idx.filter}`;
+            }
+            createScript += '\nGO\n\n';
+          });
+        }
+
         return createScript;
       } else {
         const result = await pool!.query(`EXEC sp_helptext '${schemaDotName}'`);
@@ -639,7 +819,7 @@ export const getModifiedObjects = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Not connected to SQL Server' });
     }
 
-    const { database, pageNumber, pageSize } = req.query;
+    const { database, pageNumber, pageSize, searchTerm } = req.query;
     if (!database) {
       return res.status(400).json({ error: 'Database is required' });
     }
@@ -650,12 +830,22 @@ export const getModifiedObjects = async (req: Request, res: Response) => {
     const page = Math.max(parseInt(pageNumber as string) || 1, 1);
     const size = Math.max(parseInt(pageSize as string) || 10, 1);
     const offset = (page - 1) * size;
+    const search = searchTerm ? decodeURIComponent(searchTerm as string) : null;
+
+    const searchCondition = search
+      ? `AND (
+          o.name LIKE '%${search.replace(/'/g, "''")}%' OR
+          s.name LIKE '%${search.replace(/'/g, "''")}%'
+        )`
+      : '';
 
     const countQuery = `
       SELECT COUNT(*) AS totalCount
       FROM sys.objects o
+      INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
       WHERE o.is_ms_shipped = 0
         AND o.type IN ('U', 'V', 'P', 'TF', 'FN', 'IF', 'TR', 'SN')
+        ${searchCondition}
     `;
     const countResult = await pool.query(countQuery);
     const totalCount = countResult.recordset[0]?.totalCount || 0;
@@ -681,6 +871,7 @@ export const getModifiedObjects = async (req: Request, res: Response) => {
       INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
       WHERE o.is_ms_shipped = 0
         AND o.type IN ('U', 'V', 'P', 'TF', 'FN', 'IF', 'TR', 'SN')
+        ${searchCondition}
       ORDER BY o.modify_date DESC, o.name ASC
       OFFSET ${offset} ROWS
       FETCH NEXT ${size} ROWS ONLY

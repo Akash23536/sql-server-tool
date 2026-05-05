@@ -107,16 +107,23 @@ function App() {
   const [showModifiedObjects, setShowModifiedObjects] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [showExcelTool, setShowExcelTool] = useState(false);
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [sessionData, setSessionData] = useState<any[]>([]);
+  const [sessionColumns, setSessionColumns] = useState<string[]>([]);
+  const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [objectToCompare, setObjectToCompare] = useState<DbObject | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  const [isDeepSearch, setIsDeepSearch] = useState(() => localStorage.getItem('sql_isDeepSearch') === 'true');
+  const [isDeepSearch, setIsDeepSearch] = useState(false);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
   useEffect(() => { localStorage.setItem('sql_lastFilter', objectFilter); }, [objectFilter]);
-  useEffect(() => { localStorage.setItem('sql_lastSearch', searchTerm); }, [searchTerm]);
+  useEffect(() => {
+    if (!isDeepSearch) {
+      localStorage.setItem('sql_lastSearch', searchTerm);
+    }
+  }, [searchTerm, isDeepSearch]);
   useEffect(() => { localStorage.setItem('sql_lastQuery', query); }, [query]);
-  useEffect(() => { localStorage.setItem('sql_isDeepSearch', isDeepSearch.toString()); }, [isDeepSearch]);
 
   // Initial object load on reconnect/refresh
   useEffect(() => {
@@ -491,7 +498,30 @@ function App() {
           </button>
 
           {/* Combined Avatar Card */}
-          <div className="flex items-center gap-2.5 px-3 py-1 bg-white/40 dark:bg-white/5 rounded-lg border border-white/30 dark:border-white/10 backdrop-blur-sm shadow-sm">
+          <div 
+            onClick={async () => {
+              if (!connectionConfig || !selectedDatabase) {
+                alert("Please select a database first.");
+                return;
+              }
+              setShowSessionModal(true);
+              setIsSessionLoading(true);
+              const sessionQuery = `SELECT \n    session_id AS [Session ID],\n    login_name AS [Login User],\n    host_name AS [Desktop],\n    program_name AS [Program],\n    client_interface_name AS [Server Access],\n    DB_NAME(database_id) AS [Database Name],\n    status AS [Status],\n    last_request_end_time AS [Last Response Time]\nFROM sys.dm_exec_sessions\nWHERE is_user_process = 1\nORDER BY login_name;`;
+              try {
+                const res = await executeQuery(selectedDatabase, sessionQuery);
+                const resultSet = res.results?.[0];
+                setSessionData(resultSet?.rows || []);
+                setSessionColumns(resultSet?.columns || []);
+              } catch (e: any) {
+                console.error(e);
+                alert("Failed to fetch sessions: " + e.message);
+              } finally {
+                setIsSessionLoading(false);
+              }
+            }}
+            title="Click to view current user sessions and access details"
+            className="flex items-center gap-2.5 px-3 py-1 bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 rounded-lg border border-white/30 dark:border-white/10 backdrop-blur-sm shadow-sm cursor-pointer transition-all active:scale-95"
+          >
             {/* Avatar circle */}
             <div className="relative flex-shrink-0">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0078d4] via-[#2a8fd4] to-[#5bb4ff] flex items-center justify-center text-white text-sm font-black shadow-md ring-2 ring-white/60 dark:ring-white/10">
@@ -589,15 +619,16 @@ function App() {
               <PanelGroup orientation="vertical">
                 {/* Editor Panel */}
                 <Panel defaultSize={60} minSize={20}>
-                  <QueryEditor
+                    <QueryEditor
                     onExecute={handleExecuteQuery}
                     onCancel={handleCancelQuery}
                     isExecuting={isExecuting}
                     script={objectScript}
                     isOffline={isOffline}
-                    highlightTerm={searchTerm}
+                    highlightTerm={(isDeepSearch && searchTerm) ? searchTerm : undefined}
                     query={query}
                     onQueryChange={setQuery}
+                    queryError={queryError}
                     isAIModalOpen={isAIModalOpen}
                     onToggleAI={setIsAIModalOpen}
                     onShowAIResult={(msg) => {
@@ -651,6 +682,51 @@ function App() {
         onClose={() => setShowExcelTool(false)}
         database={selectedDatabase}
       />
+
+      {/* Session Modal */}
+      {showSessionModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+          <div className="bg-white dark:bg-[#1e1e1e] w-full max-w-5xl max-h-[80vh] flex flex-col border border-gray-300 dark:border-gray-700 shadow-2xl rounded-sm m-4">
+            <div className="flex items-center justify-between p-4 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#2d2d2d]">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 uppercase tracking-tight">Active User Sessions</h3>
+              <button onClick={() => setShowSessionModal(false)} className="text-gray-500 hover:text-red-500 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {isSessionLoading ? (
+                <div className="flex flex-col items-center justify-center text-gray-500 my-12 gap-3">
+                  <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+                  <span className="font-semibold uppercase tracking-widest text-xs">Loading sessions...</span>
+                </div>
+              ) : sessionData.length > 0 ? (
+                <div className="overflow-x-auto border border-gray-300 dark:border-gray-700 rounded">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-gray-100 dark:bg-[#2d2d2d] text-gray-700 dark:text-gray-300 border-b border-gray-300 dark:border-gray-700">
+                        {sessionColumns.map(col => <th key={col} className="p-2 border-r border-gray-300 dark:border-gray-700 font-bold whitespace-nowrap">{col}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessionData.map((row, i) => (
+                        <tr key={i} className="border-b border-gray-200 dark:border-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                          {sessionColumns.map((col, j) => (
+                            <td key={j} className="p-2 border-r border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-200 whitespace-nowrap">
+                              {row[col] !== null ? String(row[col]) : <span className="text-gray-400 italic">NULL</span>}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 my-8 font-bold">No active user sessions found.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
