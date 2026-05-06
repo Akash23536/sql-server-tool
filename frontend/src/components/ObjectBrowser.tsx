@@ -35,6 +35,8 @@ interface ObjectBrowserProps {
   onShowModifiedObjects?: () => void;
   onShowExcelTool?: () => void;
   onShowCompare?: (obj: DbObject) => void;
+  isConnected?: boolean;
+  onShowConnectionForm?: () => void;
 }
 
 export function ObjectBrowser({
@@ -57,6 +59,8 @@ export function ObjectBrowser({
   onShowModifiedObjects,
   onShowExcelTool,
   onShowCompare,
+  isConnected,
+  onShowConnectionForm,
 }: ObjectBrowserProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -187,6 +191,18 @@ export function ObjectBrowser({
 
         {/* Action buttons row - 50/50 split */}
         <div className="flex gap-2">
+          {!isConnected && (
+            <button
+              onClick={() => onShowConnectionForm?.()}
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
+              title="Connect to SQL Server"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="truncate">Connect SQL</span>
+            </button>
+          )}
           <button
             onClick={() => onShowModifiedObjects?.()}
             disabled={!selectedDatabase}

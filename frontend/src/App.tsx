@@ -43,6 +43,7 @@ function App() {
   const [isAutoReconnecting, setIsAutoReconnecting] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionConfig, setConnectionConfig] = useState<ConnectionConfig | null>(null);
+  const [showConnectionModal, setShowConnectionModal] = useState(false);
   
   // App authentication state
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('app_authToken'));
@@ -187,6 +188,7 @@ function App() {
 
         // Load databases
         await loadDatabases();
+        setShowConnectionModal(false);
       } else {
         setConnectionError(result.error || 'Connection failed');
       }
@@ -208,6 +210,7 @@ function App() {
     // but for now, let's just reset the state as we've simplified the UI.
     setIsConnecting(false);
     setConnectionError('Connection cancelled');
+    setShowConnectionModal(false);
   };
 
   // Load databases
@@ -498,23 +501,21 @@ function App() {
     );
   }
 
-  if (!isConnected) {
-    return (
-      <div className="app bg-slate-200 dark:bg-slate-900">
-        <ConnectionForm
-          onConnect={handleConnect}
-          onCancel={handleCancel}
-          isConnecting={isConnecting}
-          error={connectionError}
-        />
-      </div>
-    );
-  }
-
-
-
   return (
     <div className={`app h-screen flex flex-col ${isDarkTheme ? 'dark' : ''}`} data-theme={isDarkTheme ? 'dark' : 'light'}>
+      {/* Connection Modal Overlay */}
+      {showConnectionModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative shadow-2xl rounded-xl overflow-hidden w-full max-w-md border border-white/10">
+            <ConnectionForm
+              onConnect={handleConnect}
+              onCancel={handleCancel}
+              isConnecting={isConnecting}
+              error={connectionError}
+            />
+          </div>
+        </div>
+      )}
       {/* Minimal Top Bar */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c] shadow-sm">
         {/* Left: Sidebar Toggle + User Avatar Card */}
@@ -669,6 +670,8 @@ function App() {
                   setObjectToCompare(obj);
                   setShowCompareModal(true);
                 }}
+                isConnected={isConnected}
+                onShowConnectionForm={() => setShowConnectionModal(true)}
               />
               <button 
                 onClick={() => setIsSidebarVisible(false)}
@@ -709,6 +712,8 @@ function App() {
                     setObjectToCompare(obj);
                     setShowCompareModal(true);
                   }}
+                  isConnected={isConnected}
+                  onShowConnectionForm={() => setShowConnectionModal(true)}
                 />
               </Panel>
               <PanelResizeHandle className="resize-handle-horizontal" />
