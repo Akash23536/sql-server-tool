@@ -1,5 +1,5 @@
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ConnectionForm } from './components/ConnectionForm';
 import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
@@ -7,6 +7,7 @@ import { ResultsGrid } from './components/ResultsGrid';
 import { ModifiedObjects } from './components/ModifiedObjects';
 import { ObjectCompare } from './components/ObjectCompare';
 import { ExcelTool } from './components/ExcelTool';
+import { Auth } from './components/Auth';
 import {
   connectToServer,
   getDatabases,
@@ -43,6 +44,10 @@ function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionConfig, setConnectionConfig] = useState<ConnectionConfig | null>(null);
   
+  // App authentication state
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('app_authToken'));
+  const [authUser, setAuthUser] = useState<string | null>(() => localStorage.getItem('app_authUser'));
+
   // Auto-reconnect on page reload using saved session
   useEffect(() => {
     const saved = localStorage.getItem('sqlConnectionConfig');
@@ -113,7 +118,10 @@ function App() {
   const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [objectToCompare, setObjectToCompare] = useState<DbObject | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isResultsVisible, setIsResultsVisible] = useState(true);
   const [isDeepSearch, setIsDeepSearch] = useState(false);
+  const [drawerHeight, setDrawerHeight] = useState(55);
+  const drawerDragRef = useRef<{startY: number; startHeight: number} | null>(null);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -138,6 +146,10 @@ function App() {
       if (e.altKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setIsSidebarVisible(prev => !prev);
+      }
+      if (e.altKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        setIsResultsVisible(prev => !prev);
       }
     };
     window.addEventListener('resize', handleResize);
@@ -405,11 +417,13 @@ function App() {
     try {
       const result = await executeQuery(selectedDatabase, queryText, controller.signal);
       setQueryResult(result);
+      setIsResultsVisible(true); // Auto-show drawer on success
     } catch (error: any) {
       if (error.name === 'AbortError') {
         setQueryError('Query cancelled');
       } else {
         setQueryError(error.message);
+        setIsResultsVisible(true); // Auto-show drawer on error too
       }
     } finally {
       setIsExecuting(false);
@@ -450,6 +464,25 @@ function App() {
     setObjectFilter('all');
   };
 
+  const handleAppLogin = (token: string, username: string) => {
+    localStorage.setItem('app_authToken', token);
+    localStorage.setItem('app_authUser', username);
+    setAuthToken(token);
+    setAuthUser(username);
+  };
+
+  const handleAppLogout = () => {
+    localStorage.removeItem('app_authToken');
+    localStorage.removeItem('app_authUser');
+    setAuthToken(null);
+    setAuthUser(null);
+    handleDisconnect(); // also disconnect from SQL
+  };
+
+  if (!authToken) {
+    return <Auth onLogin={handleAppLogin} />;
+  }
+
   // Show a full-screen loader while silently reconnecting
   if (isAutoReconnecting) {
     return (
@@ -478,6 +511,8 @@ function App() {
     );
   }
 
+
+
   return (
     <div className={`app h-screen flex flex-col ${isDarkTheme ? 'dark' : ''}`} data-theme={isDarkTheme ? 'dark' : 'light'}>
       {/* Minimal Top Bar */}
@@ -493,6 +528,19 @@ function App() {
               {isSidebarVisible
                 ? <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
                 : <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M6 5l7 7-7 7" />
+              }
+            </svg>
+          </button>
+
+          <button 
+            onClick={() => setIsResultsVisible(!isResultsVisible)}
+            className={`p-1.5 rounded-md transition-all ${ !isResultsVisible ? 'bg-[#0078d4]/20 text-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-700'}`}
+            title={isResultsVisible ? "Hide Results (Alt+R)" : "Show Results (Alt+R)"}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              {isResultsVisible 
+                ? <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                : <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               }
             </svg>
           </button>
@@ -541,29 +589,40 @@ function App() {
           </div>
         </div>
 
-        {/* Right: Disconnect icon button only */}
-        <button 
-          onClick={handleDisconnect}
-          title="Disconnect"
-          className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 border border-red-300/30 hover:border-red-500 hover:shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-          </svg>
-          <span className="text-[10px] font-black uppercase tracking-widest">Disconnect</span>
-        </button>
+        {/* Right: User Info and Disconnect */}
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex flex-col items-end mr-2">
+            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">App User: {authUser}</span>
+            <button 
+              onClick={handleAppLogout}
+              className="text-[10px] text-blue-500 hover:underline"
+            >
+              Sign out of App
+            </button>
+          </div>
+          <button 
+            onClick={handleDisconnect}
+            title="Disconnect DB"
+            className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 border border-red-300/30 hover:border-red-500 hover:shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+            </svg>
+            <span className="text-[10px] font-black uppercase tracking-widest">Disconnect DB</span>
+          </button>
+        </div>
       </div>
 
       {/* App Content */}
       <div className="app-content relative flex overflow-hidden">
-        {/* Mobile Top Toggle Handle (when sidebar hidden) */}
+        {/* Mobile Sidebar Handle (Left Edge) */}
         {!isSidebarVisible && isMobile && (
           <div
             onClick={() => setIsSidebarVisible(true)}
-            className="absolute top-0 left-0 right-0 h-1.5 bg-[#0078d4] hover:h-3 cursor-pointer z-[100] transition-all flex items-center justify-center group"
+            className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#0078d4] hover:w-3 cursor-pointer z-[100] transition-all flex items-center justify-center group"
             title="Show Object Browser"
           >
-            <span className="text-[8px] text-white opacity-0 group-hover:opacity-100 font-bold">▼</span>
+            <span className="text-[8px] text-white opacity-0 group-hover:opacity-100 font-bold">▶</span>
           </div>
         )}
 
@@ -578,9 +637,52 @@ function App() {
           </div>
         )}
 
+        {/* Mobile Drawer Backdrop & Sidebar */}
+        {isMobile && isSidebarVisible && (
+          <div className="fixed inset-0 z-[300] flex">
+            <div 
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" 
+              onClick={() => setIsSidebarVisible(false)}
+            />
+            <div className="relative w-[80%] h-full bg-white dark:bg-[#1e1e1e] shadow-2xl animate-slide-in-left">
+              <ObjectBrowser
+                databases={databases}
+                selectedDatabase={selectedDatabase}
+                isOffline={isOffline}
+                onSelectDatabase={handleSelectDatabase}
+                objects={objects}
+                onSelectObject={handleSelectObject}
+                selectedObject={selectedObject}
+                onObjectTypeFilter={handleObjectTypeFilter}
+                currentFilter={objectFilter}
+                hasMore={objectHasMore}
+                isLoading={isLoadingObjects}
+                onLoadMore={loadMoreObjects}
+                totalObjects={objectTotal}
+                onSearch={handleSearch}
+                searchTerm={searchTerm}
+                isDeepSearch={isDeepSearch}
+                onToggleDeepSearch={setIsDeepSearch}
+                onShowModifiedObjects={() => setShowModifiedObjects(true)}
+                onShowExcelTool={() => setShowExcelTool(true)}
+                onShowCompare={(obj) => {
+                  setObjectToCompare(obj);
+                  setShowCompareModal(true);
+                }}
+              />
+              <button 
+                onClick={() => setIsSidebarVisible(false)}
+                className="absolute top-1/2 -right-4 w-8 h-8 bg-[#0078d4] text-white rounded-full flex items-center justify-center shadow-lg z-[301]"
+              >
+                <span className="text-xs font-bold">◀</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <PanelGroup orientation={isMobile ? "vertical" : "horizontal"}>
-          {/* Object Browser Panel */}
-          {isSidebarVisible && (
+          {/* Object Browser Panel (Desktop Only) */}
+          {!isMobile && isSidebarVisible && (
             <>
               <Panel defaultSize={25} minSize={15}>
                 <ObjectBrowser
@@ -609,48 +711,107 @@ function App() {
                   }}
                 />
               </Panel>
-              <PanelResizeHandle className={isMobile ? "resize-handle-vertical" : "resize-handle-horizontal"} />
+              <PanelResizeHandle className="resize-handle-horizontal" />
             </>
           )}
           
-          {/* Main Area (Editor + Results) */}
-          <Panel defaultSize={isSidebarVisible ? 75 : 100} minSize={30}>
-            <div className="main-panel h-full w-full">
-              <PanelGroup orientation="vertical">
-                {/* Editor Panel */}
-                <Panel defaultSize={60} minSize={20}>
-                    <QueryEditor
-                    onExecute={handleExecuteQuery}
-                    onCancel={handleCancelQuery}
-                    isExecuting={isExecuting}
-                    script={objectScript}
-                    isOffline={isOffline}
-                    highlightTerm={(isDeepSearch && searchTerm) ? searchTerm : undefined}
-                    query={query}
-                    onQueryChange={setQuery}
-                    queryError={queryError}
-                    isAIModalOpen={isAIModalOpen}
-                    onToggleAI={setIsAIModalOpen}
-                    onShowAIResult={(msg) => {
-                      setQueryResult(null);
-                      setQueryError(null);
-                      setAiResult(null);
-                      let cleanCode = msg;
-                      const codeBlockMatch = msg.match(/```(?:sql|SQL)?\n([\s\S]*?)\n```/);
-                      if (codeBlockMatch) cleanCode = codeBlockMatch[1];
-                      const header = `-- =============================================\n-- AI GENERATED CODE\n-- =============================================\n\n`;
-                      setQuery(header + cleanCode.trim());
-                    }}
-                  />
-                </Panel>
-                
-                <PanelResizeHandle className="resize-handle-vertical" />
-                
-                {/* Results Panel */}
-                <Panel defaultSize={40} minSize={20} collapsible>
+          {/* Main Area (Editor + Results Drawer) */}
+          <Panel defaultSize={isSidebarVisible && !isMobile ? 75 : 100} minSize={30}>
+            <div className="main-panel h-full w-full relative overflow-hidden flex flex-col">
+              {/* Query Editor - always takes available space */}
+              <div className="flex-1 overflow-hidden">
+                <QueryEditor
+                  onExecute={handleExecuteQuery}
+                  onCancel={handleCancelQuery}
+                  isExecuting={isExecuting}
+                  script={objectScript}
+                  isOffline={isOffline}
+                  highlightTerm={(isDeepSearch && searchTerm) ? searchTerm : undefined}
+                  query={query}
+                  onQueryChange={setQuery}
+                  queryError={queryError}
+                  isAIModalOpen={isAIModalOpen}
+                  onToggleAI={setIsAIModalOpen}
+                  onShowAIResult={(msg) => {
+                    setQueryResult(null);
+                    setQueryError(null);
+                    setAiResult(null);
+                    let cleanCode = msg;
+                    const codeBlockMatch = msg.match(/```(?:sql|SQL)?\n([\s\S]*?)\n```/);
+                    if (codeBlockMatch) cleanCode = codeBlockMatch[1];
+                    const header = `-- =============================================\n-- AI GENERATED CODE\n-- =============================================\n\n`;
+                    setQuery(header + cleanCode.trim());
+                  }}
+                />
+              </div>
+
+              {/* Results Bottom Drawer */}
+              <div
+                className="absolute left-0 right-0 bottom-0 flex flex-col bg-white dark:bg-[#1e1e1e] border-t-2 border-[#0078d4] shadow-[0_-4px_24px_rgba(0,0,0,0.25)] z-50"
+                style={{
+                  height: `${drawerHeight}%`,
+                  transform: isResultsVisible ? 'translateY(0)' : 'translateY(100%)',
+                  transition: drawerDragRef.current ? 'none' : 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+              >
+                {/* Drag Handle Bar */}
+                <div 
+                  className="flex items-center justify-center h-6 cursor-ns-resize bg-[#0078d4]/10 hover:bg-[#0078d4]/20 transition-colors flex-shrink-0 gap-2 select-none"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    drawerDragRef.current = { startY: e.clientY, startHeight: drawerHeight };
+                    const onMouseMove = (ev: MouseEvent) => {
+                      if (!drawerDragRef.current) return;
+                      const parentEl = (e.target as HTMLElement).closest('.main-panel');
+                      if (!parentEl) return;
+                      const parentHeight = parentEl.clientHeight;
+                      const delta = drawerDragRef.current.startY - ev.clientY;
+                      const newHeight = drawerDragRef.current.startHeight + (delta / parentHeight) * 100;
+                      setDrawerHeight(Math.min(90, Math.max(15, newHeight)));
+                    };
+                    const onMouseUp = () => {
+                      drawerDragRef.current = null;
+                      window.removeEventListener('mousemove', onMouseMove);
+                      window.removeEventListener('mouseup', onMouseUp);
+                    };
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                  }}
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0];
+                    drawerDragRef.current = { startY: touch.clientY, startHeight: drawerHeight };
+                    const onTouchMove = (ev: TouchEvent) => {
+                      if (!drawerDragRef.current) return;
+                      const parentEl = (e.target as HTMLElement).closest('.main-panel');
+                      if (!parentEl) return;
+                      const parentHeight = parentEl.clientHeight;
+                      const delta = drawerDragRef.current.startY - ev.touches[0].clientY;
+                      const newHeight = drawerDragRef.current.startHeight + (delta / parentHeight) * 100;
+                      setDrawerHeight(Math.min(90, Math.max(15, newHeight)));
+                    };
+                    const onTouchEnd = () => {
+                      drawerDragRef.current = null;
+                      window.removeEventListener('touchmove', onTouchMove);
+                      window.removeEventListener('touchend', onTouchEnd);
+                    };
+                    window.addEventListener('touchmove', onTouchMove);
+                    window.addEventListener('touchend', onTouchEnd);
+                  }}
+                >
+                  <div className="w-8 h-1 rounded-full bg-[#0078d4]/50"/>
+                  <span 
+                    className="text-[9px] font-bold text-[#0078d4] uppercase tracking-widest cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); setIsResultsVisible(!isResultsVisible); }}
+                  >
+                    {isResultsVisible ? 'Drag or Click to Hide' : 'Show Results'}
+                  </span>
+                  <div className="w-8 h-1 rounded-full bg-[#0078d4]/50"/>
+                </div>
+                {/* Results Content */}
+                <div className="flex-1 overflow-auto">
                   <ResultsGrid result={queryResult} error={queryError} aiResult={aiResult} />
-                </Panel>
-              </PanelGroup>
+                </div>
+              </div>
             </div>
           </Panel>
         </PanelGroup>
