@@ -85,7 +85,7 @@ function App() {
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 50;
+  const pageSize = 25;
   const [objectTotal, setObjectTotal] = useState(0);
   const [objectHasMore, setObjectHasMore] = useState(false);
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);

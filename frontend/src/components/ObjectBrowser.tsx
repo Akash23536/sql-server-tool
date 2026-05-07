@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import type { Database } from '../api';
 import { OBJECT_TYPE_OPTIONS } from '../api';
 import type { ObjectTypeFilter } from '../api';
@@ -40,7 +40,7 @@ interface ObjectBrowserProps {
   onShowSessions?: () => void;
 }
 
-export function ObjectBrowser({
+export const ObjectBrowser = memo(({
   databases,
   selectedDatabase,
   onSelectDatabase,
@@ -63,7 +63,7 @@ export function ObjectBrowser({
   isConnected,
   onShowConnectionForm,
   onShowSessions,
-}: ObjectBrowserProps) {
+}: ObjectBrowserProps) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [showHistory, setShowHistory] = useState(false);
@@ -74,11 +74,11 @@ export function ObjectBrowser({
   });
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Disable automatic search for Deep Search (Code mode)
     if (isDeepSearch) return;
 
     const timer = setTimeout(() => {
@@ -179,9 +179,7 @@ export function ObjectBrowser({
 
   return (
     <div className="flex flex-col h-full bg-[#f0f0f0] dark:bg-[#252526] border-r border-gray-300 dark:border-[#3c3c3c] overflow-hidden select-none">
-      {/* Header Section */}
       <div className="flex flex-col gap-2 p-2 bg-[#f3f3f3] dark:bg-[#252526] border-b border-gray-300 dark:border-[#3c3c3c] shadow-sm">
-        {/* Database Selector Row - no label */}
         <div className="relative flex items-center">
           <DatabaseSearchSelector
             databases={databases}
@@ -190,8 +188,6 @@ export function ObjectBrowser({
             disabled={databases.length === 0}
           />
         </div>
-
-        {/* Action buttons row - 3-way split */}
         <div className="flex gap-1.5">
           {!isConnected && (
             <button
@@ -246,7 +242,6 @@ export function ObjectBrowser({
         </div>
       </div>
 
-      {/* Search and Filters */}
       <div className="p-2 md:p-3 border-b border-gray-200 dark:border-white/5 space-y-2 md:space-y-3 bg-white dark:bg-[#1e1e1e]">
         <div className="relative group" ref={searchRef}>
           <input
@@ -320,7 +315,6 @@ export function ObjectBrowser({
           )}
         </div>
 
-        {/* Deep Search Toggle (Moved below) */}
         <div className="flex items-center px-1 mt-2">
           <div className="flex items-center gap-1.5">
             <button
@@ -333,10 +327,8 @@ export function ObjectBrowser({
             <span className={`text-[9px] font-black uppercase tracking-widest ${isDeepSearch ? 'text-[#0078d4]' : 'text-gray-400'}`}>Advance Search</span>
           </div>
         </div>
-
       </div>
 
-      {/* Filter Section */}
       <div className="px-2 py-1 bg-[#dee1e6] dark:bg-[#2d2d2d] flex items-center justify-between border-b border-gray-300 dark:border-[#3c3c3c]">
         <div className="flex items-center gap-1.5">
           <svg className="w-3 h-3 text-[#0078d4] dark:text-[#3a96dd]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
@@ -355,16 +347,16 @@ export function ObjectBrowser({
         <span className="text-[10px] font-bold text-gray-400">{totalObjects} objects</span>
       </div>
 
-      {/* List Section */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 relative">
-        {/* Top Loading Bar (Processing) */}
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 relative"
+      >
         {isLoading && (
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#0078d4]/10 overflow-hidden z-20">
             <div className="h-full bg-[#0078d4] w-1/3 animate-[loading_1.5s_infinite_ease-in-out]"></div>
           </div>
         )}
 
-        {/* Initial Search Spinner */}
         {isLoading && objects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="relative group">
@@ -404,7 +396,6 @@ export function ObjectBrowser({
         )}
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
         <ObjectContextMenu
           x={contextMenu.x}
@@ -416,4 +407,4 @@ export function ObjectBrowser({
       )}
     </div>
   );
-}
+});
