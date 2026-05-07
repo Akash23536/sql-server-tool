@@ -37,6 +37,7 @@ interface ObjectBrowserProps {
   onShowCompare?: (obj: DbObject) => void;
   isConnected?: boolean;
   onShowConnectionForm?: () => void;
+  onShowSessions?: () => void;
 }
 
 export function ObjectBrowser({
@@ -61,6 +62,7 @@ export function ObjectBrowser({
   onShowCompare,
   isConnected,
   onShowConnectionForm,
+  onShowSessions,
 }: ObjectBrowserProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -189,38 +191,52 @@ export function ObjectBrowser({
           />
         </div>
 
-        {/* Action buttons row - 50/50 split */}
-        <div className="flex gap-2">
+        {/* Action buttons row - 3-way split */}
+        <div className="flex gap-1.5">
           {!isConnected && (
             <button
               onClick={() => onShowConnectionForm?.()}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
+              className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[9px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
               title="Connect to SQL Server"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span className="truncate">Connect SQL</span>
+              <span className="truncate">Connect</span>
             </button>
           )}
           <button
             onClick={() => onShowModifiedObjects?.()}
             disabled={!selectedDatabase}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-[#4f46e5] hover:bg-[#4338ca] disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-[10px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
-            title="Show Modified Database Object Log"
+            className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 bg-[#4f46e5] hover:bg-[#4338ca] disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-[9px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
+            title="Activity Log (Modified Objects)"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="truncate">Logs</span>
+            <span className="truncate">Activity</span>
           </button>
+          
+          <button
+            onClick={() => onShowSessions?.()}
+            disabled={!selectedDatabase}
+            className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 bg-[#d97706] hover:bg-[#b45309] disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-[9px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
+            title="User Session Audit (Live Sessions)"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <span className="truncate">Sessions</span>
+          </button>
+
           <button
             onClick={() => onShowExcelTool?.()}
             disabled={!selectedDatabase}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-[#107c41] hover:bg-[#0d6635] disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-[10px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
+            className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 bg-[#107c41] hover:bg-[#0d6635] disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-[9px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
             title="Excel Export / Import"
           >
-            <svg viewBox="0 0 32 32" className="w-3.5 h-3.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 32 32" className="w-3 h-3" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M17 3H7C5.89543 3 5 3.89543 5 5V27C5 28.1046 5.89543 29 7 29H25C26.1046 29 27 28.1046 27 27V13L17 3Z" fill="currentColor" fillOpacity="0.2"/>
               <path d="M17 3V13H27L17 3Z" fill="currentColor" fillOpacity="0.4"/>
               <path d="M11 15L15 21L11 27H14L16.5 23L19 27H22L18 21L22 15H19L16.5 19L14 15H11Z" fill="white"/>

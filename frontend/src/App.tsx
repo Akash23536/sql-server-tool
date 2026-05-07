@@ -8,6 +8,8 @@ import { ModifiedObjects } from './components/ModifiedObjects';
 import { ObjectCompare } from './components/ObjectCompare';
 import { ExcelTool } from './components/ExcelTool';
 import { Auth } from './components/Auth';
+import { ServerLog } from './components/ServerLog';
+import { ConnectionDrawer } from './components/ConnectionDrawer';
 import {
   connectToServer,
   getDatabases,
@@ -43,11 +45,9 @@ function App() {
   const [isAutoReconnecting, setIsAutoReconnecting] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionConfig, setConnectionConfig] = useState<ConnectionConfig | null>(null);
-  const [showConnectionModal, setShowConnectionModal] = useState(false);
-  
-  // App authentication state
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('app_authToken'));
   const [authUser, setAuthUser] = useState<string | null>(() => localStorage.getItem('app_authUser'));
+  const [sidebarTab, setSidebarTab] = useState<'servers' | 'objects'>('servers');
 
   // Auto-reconnect on page reload using saved session
   useEffect(() => {
@@ -110,6 +110,7 @@ function App() {
   const [queryController, setQueryController] = useState<AbortController | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isConnectionDrawerOpen, setIsConnectionDrawerOpen] = useState(false);
   const [showModifiedObjects, setShowModifiedObjects] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [showExcelTool, setShowExcelTool] = useState(false);
@@ -123,6 +124,9 @@ function App() {
   const [isDeepSearch, setIsDeepSearch] = useState(false);
   const [drawerHeight, setDrawerHeight] = useState(55);
   const drawerDragRef = useRef<{startY: number; startHeight: number} | null>(null);
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [viewingSessionQuery, setViewingSessionQuery] = useState<string | null>(null);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -162,7 +166,7 @@ function App() {
   }, []);
 
   // Handle connection
-  const handleConnect = async (server: string, port: number, username: string, password: string) => {
+  const handleConnect = async (server: string, port: number, username: string, password: string, name?: string, save?: boolean) => {
     // Create new AbortController for this connection attempt
     const controller = new AbortController();
     setIsConnecting(true);
@@ -186,9 +190,22 @@ function App() {
         // Save credentials persistently for auto-reconnect
         localStorage.setItem('sqlConnectionConfig', JSON.stringify(config));
 
+        // Save to MongoDB if requested
+        if (save && name) {
+          const token = localStorage.getItem('app_authToken');
+          fetch('/api/user/saved-connections', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ name, server, port, username, password })
+          }).catch(err => console.error('Failed to save connection to DB:', err));
+        }
+
         // Load databases
         await loadDatabases();
-        setShowConnectionModal(false);
+        // setSidebarTab('objects'); // Switch to explorer on success
       } else {
         setConnectionError(result.error || 'Connection failed');
       }
@@ -444,6 +461,38 @@ function App() {
     }
   };
 
+  const handleShowSessions = async () => {
+    if (!selectedDatabase) return;
+    setIsSessionLoading(true);
+    setShowSessionModal(true);
+    try {
+      const sql = `
+        SELECT 
+          s.session_id as [ID],
+          s.login_name as [User],
+          s.host_name as [Device],
+          db_name(s.database_id) as [Database],
+          FORMAT(s.last_request_start_time, 'hh:mm:ss tt') as [Time],
+          s.status as [Status],
+          COALESCE(st.text, 'N/A') as [Last Query]
+        FROM sys.dm_exec_sessions s
+        LEFT JOIN sys.dm_exec_connections c ON s.session_id = c.session_id
+        OUTER APPLY sys.dm_exec_sql_text(c.most_recent_sql_handle) st
+        WHERE s.is_user_process = 1
+        ORDER BY s.last_request_end_time DESC
+      `;
+      const result = await executeQuery(selectedDatabase, sql);
+      if (result.results && result.results[0]) {
+        setSessionColumns(result.results[0].columns);
+        setSessionData(result.results[0].rows);
+      }
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+    } finally {
+      setIsSessionLoading(false);
+    }
+  };
+
   // Handle disconnect
   const handleDisconnect = async () => {
     await disconnect();
@@ -482,61 +531,124 @@ function App() {
     handleDisconnect(); // also disconnect from SQL
   };
 
+
   if (!authToken) {
     return <Auth onLogin={handleAppLogin} />;
   }
 
-  // Show a full-screen loader while silently reconnecting
-  if (isAutoReconnecting) {
-    return (
-      <div className="app flex items-center justify-center bg-slate-200 dark:bg-slate-900">
-        <div className="bg-[#f0f0f0] dark:bg-[#252526] p-10 border border-gray-300 dark:border-gray-700 shadow-2xl rounded-sm flex flex-col items-center gap-6">
-          <div className="w-12 h-12 border-4 border-[#0078d4]/20 border-t-[#0078d4] rounded-full animate-spin"></div>
-          <div className="text-center">
-            <h2 className="text-sm font-extrabold text-gray-700 dark:text-gray-200 uppercase tracking-widest">Reconnecting…</h2>
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase mt-2">Restoring your session</p>
-          </div>
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] border-r border-gray-300 dark:border-[#3c3c3c]">
+      {/* Sidebar Tabs */}
+      <div className="flex bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c]">
+        <button 
+          onClick={() => setSidebarTab('servers')}
+          className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'servers' ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] border-t-2 border-t-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-[#3c3c3c]'}`}
+        >
+          Server Connection
+        </button>
+        <button 
+          onClick={() => setSidebarTab('objects')}
+          className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'objects' ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] border-t-2 border-t-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-[#3c3c3c]'}`}
+        >
+          Explorer
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {sidebarTab === 'servers' ? (
+          <ServerLog 
+            currentConfig={connectionConfig}
+            isConnected={isConnected}
+            onConnect={(config) => handleConnect(config.server, config.port, config.username, config.password)}
+            onDisconnect={handleDisconnect}
+          />
+        ) : (
+          <ObjectBrowser
+            databases={databases}
+            selectedDatabase={selectedDatabase}
+            isOffline={databases.find(db => db.name === selectedDatabase)?.status === 'OFFLINE'}
+            onSelectDatabase={handleSelectDatabase}
+            objects={objects}
+            onSelectObject={handleSelectObject}
+            selectedObject={selectedObject}
+            onObjectTypeFilter={handleObjectTypeFilter}
+            currentFilter={objectFilter}
+            hasMore={objectHasMore}
+            isLoading={isLoadingObjects}
+            onLoadMore={loadMoreObjects}
+            totalObjects={objectTotal}
+            onSearch={handleSearch}
+            searchTerm={searchTerm}
+            isDeepSearch={isDeepSearch}
+            onToggleDeepSearch={setIsDeepSearch}
+            onShowModifiedObjects={() => setShowModifiedObjects(true)}
+            onShowExcelTool={() => setShowExcelTool(true)}
+            onShowCompare={(obj) => {
+              setObjectToCompare(obj);
+              setShowCompareModal(true);
+            }}
+            isConnected={isConnected}
+            onShowSessions={() => handleShowSessions()}
+          />
+        )}
+      </div>
+
+      {/* Sidebar Footer with Logout and Version */}
+      <div className="p-3 bg-gray-50 dark:bg-[#252526] border-t border-gray-300 dark:border-[#3c3c3c] flex items-center justify-between">
+        <button 
+          onClick={() => setShowLogoutConfirm(true)}
+          className="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all group"
+          title="Sign Out"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+          </svg>
+          <span className="text-[10px] font-black uppercase tracking-tight">Sign Out</span>
+        </button>
+        <div className="flex flex-col items-end">
+          <span className="text-[8px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Version</span>
+          <span className="text-[10px] font-black text-[#0078d4] dark:text-[#5bb4ff] tracking-widest uppercase leading-none mt-0.5">V{new Date().toISOString().split('T')[0].replace(/-/g, '')}</span>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className={`app h-screen flex flex-col ${isDarkTheme ? 'dark' : ''}`} data-theme={isDarkTheme ? 'dark' : 'light'}>
-      {/* Connection Modal Overlay */}
-      {showConnectionModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative shadow-2xl rounded-xl overflow-hidden w-full max-w-md border border-white/10">
-            <ConnectionForm
-              onConnect={handleConnect}
-              onCancel={handleCancel}
-              isConnecting={isConnecting}
-              error={connectionError}
-            />
-          </div>
-        </div>
-      )}
       {/* Minimal Top Bar */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c] shadow-sm">
-        {/* Left: Sidebar Toggle + User Avatar Card */}
         <div className="flex items-center gap-3">
-          <button 
+          {/* Compact User Section (Now serves as Sidebar Toggle) */}
+          <div 
             onClick={() => setIsSidebarVisible(!isSidebarVisible)}
-            className={`p-1.5 rounded-md transition-all ${ isSidebarVisible ? 'bg-[#0078d4]/20 text-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-700'}`}
-            title={isSidebarVisible ? 'Hide Sidebar (Alt+B)' : 'Show Sidebar (Alt+B)'}
+            className="flex items-center gap-2.5 px-2 py-1 bg-white/40 dark:bg-white/5 rounded-lg border border-white/30 dark:border-white/10 backdrop-blur-sm shadow-sm cursor-pointer hover:bg-white/60 dark:hover:bg-white/10 transition-all active:scale-95 group"
+            title="Toggle Sidebar (Alt+B)"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              {isSidebarVisible
-                ? <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
-                : <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M6 5l7 7-7 7" />
-              }
-            </svg>
-          </button>
+            <div className="relative">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#0078d4] to-[#5bb4ff] flex items-center justify-center text-white text-[10px] font-black shadow-sm group-hover:shadow-[#0078d4]/50 transition-all">
+                {authUser?.[0]?.toUpperCase() || 'U'}
+              </div>
+              <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#dee1e6] dark:border-[#2d2d2d] ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
+            </div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-tight leading-none">{authUser}</span>
+                {isConnected && connectionConfig && (
+                  <span className="text-[7px] font-bold text-[#0078d4] dark:text-[#5bb4ff] uppercase tracking-tighter leading-none border-l border-gray-400 dark:border-gray-600 pl-1.5">
+                    {connectionConfig.server}:{connectionConfig.port}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
+        <div className="flex items-center gap-2">
+          {/* Results Toggle */}
           <button 
             onClick={() => setIsResultsVisible(!isResultsVisible)}
             className={`p-1.5 rounded-md transition-all ${ !isResultsVisible ? 'bg-[#0078d4]/20 text-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-700'}`}
-            title={isResultsVisible ? "Hide Results (Alt+R)" : "Show Results (Alt+R)"}
+            title="Toggle Results (Alt+R)"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
               {isResultsVisible 
@@ -545,83 +657,52 @@ function App() {
               }
             </svg>
           </button>
-
-          {/* Combined Avatar Card */}
-          <div 
-            onClick={async () => {
-              if (!connectionConfig || !selectedDatabase) {
-                alert("Please select a database first.");
-                return;
-              }
-              setShowSessionModal(true);
-              setIsSessionLoading(true);
-              const sessionQuery = `SELECT \n    session_id AS [Session ID],\n    login_name AS [Login User],\n    host_name AS [Desktop],\n    program_name AS [Program],\n    client_interface_name AS [Server Access],\n    DB_NAME(database_id) AS [Database Name],\n    status AS [Status],\n    last_request_end_time AS [Last Response Time]\nFROM sys.dm_exec_sessions\nWHERE is_user_process = 1\nORDER BY login_name;`;
-              try {
-                const res = await executeQuery(selectedDatabase, sessionQuery);
-                const resultSet = res.results?.[0];
-                setSessionData(resultSet?.rows || []);
-                setSessionColumns(resultSet?.columns || []);
-              } catch (e: any) {
-                console.error(e);
-                alert("Failed to fetch sessions: " + e.message);
-              } finally {
-                setIsSessionLoading(false);
-              }
-            }}
-            title="Click to view current user sessions and access details"
-            className="flex items-center gap-2.5 px-3 py-1 bg-white/40 dark:bg-white/5 hover:bg-white/60 dark:hover:bg-white/10 rounded-lg border border-white/30 dark:border-white/10 backdrop-blur-sm shadow-sm cursor-pointer transition-all active:scale-95"
-          >
-            {/* Avatar circle */}
-            <div className="relative flex-shrink-0">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0078d4] via-[#2a8fd4] to-[#5bb4ff] flex items-center justify-center text-white text-sm font-black shadow-md ring-2 ring-white/60 dark:ring-white/10">
-                {connectionConfig?.username?.[0]?.toUpperCase() || 'U'}
-              </div>
-              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#dee1e6] dark:border-[#2d2d2d] ${isOffline ? 'bg-red-500' : 'bg-emerald-400'}`}></div>
-            </div>
-            {/* Text info */}
-            <div className="flex flex-col justify-center">
-              <span className="text-[11px] font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight leading-none">
-                {connectionConfig?.username || 'USER'}
-              </span>
-              <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-400 leading-none mt-0.5">
-                {connectionConfig?.server}:{connectionConfig?.port}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: User Info and Disconnect */}
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex flex-col items-end mr-2">
-            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">App User: {authUser}</span>
-            <button 
-              onClick={handleAppLogout}
-              className="text-[10px] text-blue-500 hover:underline"
-            >
-              Sign out of App
-            </button>
-          </div>
-          <button 
-            onClick={handleDisconnect}
-            title="Disconnect DB"
-            className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 border border-red-300/30 hover:border-red-500 hover:shadow-lg hover:shadow-red-500/20 hover:scale-105 active:scale-95"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-            </svg>
-            <span className="text-[10px] font-black uppercase tracking-widest">Disconnect DB</span>
-          </button>
         </div>
       </div>
 
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowLogoutConfirm(false)} />
+          <div className="relative bg-white dark:bg-[#1e1e1e] w-full max-w-sm rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 mx-auto mb-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                </svg>
+              </div>
+              <h3 className="text-center text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight mb-2">Confirm Logout</h3>
+              <p className="text-center text-gray-500 dark:text-gray-400 text-sm font-medium">Do you really want to logout from SQL Studio?</p>
+            </div>
+            <div className="flex border-t border-gray-200 dark:border-gray-800">
+              <button 
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 px-4 py-3 text-sm font-black text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors uppercase tracking-widest"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleAppLogout();
+                }}
+                className="flex-1 px-4 py-3 text-sm font-black text-white bg-red-600 hover:bg-red-700 transition-colors uppercase tracking-widest shadow-inner"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* App Content */}
-      <div className="app-content relative flex overflow-hidden">
+      <div className="app-content relative flex-1 flex overflow-hidden">
         {/* Mobile Sidebar Handle (Left Edge) */}
         {!isSidebarVisible && isMobile && (
           <div
             onClick={() => setIsSidebarVisible(true)}
             className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#0078d4] hover:w-3 cursor-pointer z-[100] transition-all flex items-center justify-center group"
-            title="Show Object Browser"
+            title="Show Sidebar"
           >
             <span className="text-[8px] text-white opacity-0 group-hover:opacity-100 font-bold">▶</span>
           </div>
@@ -638,83 +719,22 @@ function App() {
           </div>
         )}
 
-        {/* Mobile Drawer Backdrop & Sidebar */}
+        {/* Mobile Sidebar */}
         {isMobile && isSidebarVisible && (
           <div className="fixed inset-0 z-[300] flex">
-            <div 
-              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" 
-              onClick={() => setIsSidebarVisible(false)}
-            />
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={() => setIsSidebarVisible(false)}/>
             <div className="relative w-[80%] h-full bg-white dark:bg-[#1e1e1e] shadow-2xl animate-slide-in-left">
-              <ObjectBrowser
-                databases={databases}
-                selectedDatabase={selectedDatabase}
-                isOffline={isOffline}
-                onSelectDatabase={handleSelectDatabase}
-                objects={objects}
-                onSelectObject={handleSelectObject}
-                selectedObject={selectedObject}
-                onObjectTypeFilter={handleObjectTypeFilter}
-                currentFilter={objectFilter}
-                hasMore={objectHasMore}
-                isLoading={isLoadingObjects}
-                onLoadMore={loadMoreObjects}
-                totalObjects={objectTotal}
-                onSearch={handleSearch}
-                searchTerm={searchTerm}
-                isDeepSearch={isDeepSearch}
-                onToggleDeepSearch={setIsDeepSearch}
-                onShowModifiedObjects={() => setShowModifiedObjects(true)}
-                onShowExcelTool={() => setShowExcelTool(true)}
-                onShowCompare={(obj) => {
-                  setObjectToCompare(obj);
-                  setShowCompareModal(true);
-                }}
-                isConnected={isConnected}
-                onShowConnectionForm={() => setShowConnectionModal(true)}
-              />
-              <button 
-                onClick={() => setIsSidebarVisible(false)}
-                className="absolute top-1/2 -right-4 w-8 h-8 bg-[#0078d4] text-white rounded-full flex items-center justify-center shadow-lg z-[301]"
-              >
-                <span className="text-xs font-bold">◀</span>
-              </button>
+              <SidebarContent />
+              <button onClick={() => setIsSidebarVisible(false)} className="absolute top-1/2 -right-4 w-8 h-8 bg-[#0078d4] text-white rounded-full flex items-center justify-center shadow-lg">◀</button>
             </div>
           </div>
         )}
 
         <PanelGroup orientation={isMobile ? "vertical" : "horizontal"}>
-          {/* Object Browser Panel (Desktop Only) */}
           {!isMobile && isSidebarVisible && (
             <>
               <Panel defaultSize={25} minSize={15}>
-                <ObjectBrowser
-                  databases={databases}
-                  selectedDatabase={selectedDatabase}
-                  isOffline={isOffline}
-                  onSelectDatabase={handleSelectDatabase}
-                  objects={objects}
-                  onSelectObject={handleSelectObject}
-                  selectedObject={selectedObject}
-                  onObjectTypeFilter={handleObjectTypeFilter}
-                  currentFilter={objectFilter}
-                  hasMore={objectHasMore}
-                  isLoading={isLoadingObjects}
-                  onLoadMore={loadMoreObjects}
-                  totalObjects={objectTotal}
-                  onSearch={handleSearch}
-                  searchTerm={searchTerm}
-                  isDeepSearch={isDeepSearch}
-                  onToggleDeepSearch={setIsDeepSearch}
-                  onShowModifiedObjects={() => setShowModifiedObjects(true)}
-                  onShowExcelTool={() => setShowExcelTool(true)}
-                  onShowCompare={(obj) => {
-                    setObjectToCompare(obj);
-                    setShowCompareModal(true);
-                  }}
-                  isConnected={isConnected}
-                  onShowConnectionForm={() => setShowConnectionModal(true)}
-                />
+                <SidebarContent />
               </Panel>
               <PanelResizeHandle className="resize-handle-horizontal" />
             </>
@@ -782,26 +802,6 @@ function App() {
                     window.addEventListener('mousemove', onMouseMove);
                     window.addEventListener('mouseup', onMouseUp);
                   }}
-                  onTouchStart={(e) => {
-                    const touch = e.touches[0];
-                    drawerDragRef.current = { startY: touch.clientY, startHeight: drawerHeight };
-                    const onTouchMove = (ev: TouchEvent) => {
-                      if (!drawerDragRef.current) return;
-                      const parentEl = (e.target as HTMLElement).closest('.main-panel');
-                      if (!parentEl) return;
-                      const parentHeight = parentEl.clientHeight;
-                      const delta = drawerDragRef.current.startY - ev.touches[0].clientY;
-                      const newHeight = drawerDragRef.current.startHeight + (delta / parentHeight) * 100;
-                      setDrawerHeight(Math.min(90, Math.max(15, newHeight)));
-                    };
-                    const onTouchEnd = () => {
-                      drawerDragRef.current = null;
-                      window.removeEventListener('touchmove', onTouchMove);
-                      window.removeEventListener('touchend', onTouchEnd);
-                    };
-                    window.addEventListener('touchmove', onTouchMove);
-                    window.addEventListener('touchend', onTouchEnd);
-                  }}
                 >
                   <div className="w-8 h-1 rounded-full bg-[#0078d4]/50"/>
                   <span 
@@ -822,15 +822,13 @@ function App() {
         </PanelGroup>
       </div>
 
-      {/* Modified Objects Modal */}
+      {/* Modals */}
       <ModifiedObjects
         database={selectedDatabase}
         isOpen={showModifiedObjects}
         onClose={() => setShowModifiedObjects(false)}
         onAction={handleModifiedObjectAction}
       />
-
-      {/* Object Compare Modal */}
       <ObjectCompare
         isOpen={showCompareModal}
         onClose={() => {
@@ -841,54 +839,154 @@ function App() {
         selectedDatabase={selectedDatabase}
         selectedObject={objectToCompare}
       />
-
-      {/* Excel Tool Modal */}
       <ExcelTool
         isOpen={showExcelTool}
         onClose={() => setShowExcelTool(false)}
         database={selectedDatabase}
       />
-
-      {/* Session Modal */}
+      {/* User Session Audit Modal */}
       {showSessionModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-          <div className="bg-white dark:bg-[#1e1e1e] w-full max-w-5xl max-h-[80vh] flex flex-col border border-gray-300 dark:border-gray-700 shadow-2xl rounded-sm m-4">
-            <div className="flex items-center justify-between p-4 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#2d2d2d]">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 uppercase tracking-tight">Active User Sessions</h3>
-              <button onClick={() => setShowSessionModal(false)} className="text-gray-500 hover:text-red-500 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {isSessionLoading ? (
-                <div className="flex flex-col items-center justify-center text-gray-500 my-12 gap-3">
-                  <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-                  <span className="font-semibold uppercase tracking-widest text-xs">Loading sessions...</span>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 md:p-10">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setShowSessionModal(false)} />
+          <div className="relative bg-white dark:bg-[#1e1e1e] w-full max-w-6xl h-[80vh] flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-[#f8f9fa] dark:bg-[#252526] border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#d97706]/10 flex items-center justify-center text-[#d97706]">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
                 </div>
-              ) : sessionData.length > 0 ? (
-                <div className="overflow-x-auto border border-gray-300 dark:border-gray-700 rounded">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-gray-100 dark:bg-[#2d2d2d] text-gray-700 dark:text-gray-300 border-b border-gray-300 dark:border-gray-700">
-                        {sessionColumns.map(col => <th key={col} className="p-2 border-r border-gray-300 dark:border-gray-700 font-bold whitespace-nowrap">{col}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sessionData.map((row, i) => (
-                        <tr key={i} className="border-b border-gray-200 dark:border-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20">
-                          {sessionColumns.map((col, j) => (
-                            <td key={j} className="p-2 border-r border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-200 whitespace-nowrap">
-                              {row[col] !== null ? String(row[col]) : <span className="text-gray-400 italic">NULL</span>}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div>
+                  <h3 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">User Session Audit</h3>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Real-time Server Activity Monitoring</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={handleShowSessions}
+                  disabled={isSessionLoading}
+                  className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all"
+                  title="Refresh Sessions"
+                >
+                  <svg className={`w-5 h-5 ${isSessionLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                </button>
+                <button onClick={() => setShowSessionModal(false)} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg></button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-hidden p-6 bg-[#fcfcfc] dark:bg-[#1e1e1e]">
+              {isSessionLoading && sessionData.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4">
+                  <div className="w-12 h-12 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
+                  <span className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Scanning Active Sessions...</span>
                 </div>
               ) : (
-                <div className="text-center text-gray-500 my-8 font-bold">No active user sessions found.</div>
+                <div className="h-full border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-[#252526] shadow-inner">
+                  <div className="h-full overflow-auto">
+                    <table className="w-full text-left border-collapse min-w-[900px]">
+                      <thead className="sticky top-0 z-10">
+                        <tr className="bg-[#f8f9fa] dark:bg-[#2d2d2d] border-b border-gray-200 dark:border-gray-800">
+                          {sessionColumns.map(col => (
+                            <th key={col} className="px-4 py-3 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest whitespace-nowrap">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                        {sessionData.map((row, i) => (
+                          <tr key={i} className="hover:bg-blue-50/50 dark:hover:bg-blue-500/5 transition-colors group">
+                            {sessionColumns.map(col => (
+                              <td key={col} className="px-4 py-3 text-[11px] text-gray-700 dark:text-gray-300 font-medium">
+                                {col === 'Last Query' ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="max-w-[300px] truncate font-mono text-[10px] text-gray-400">
+                                      {row[col]}
+                                    </div>
+                                    {row[col] !== 'N/A' && (
+                                      <button 
+                                        onClick={() => setViewingSessionQuery(row[col])}
+                                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-black uppercase rounded shadow-sm transition-all"
+                                      >
+                                        Inspect
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  row[col]
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-[#f8f9fa] dark:bg-[#252526] border-t border-gray-200 dark:border-gray-800 flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                  <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">{sessionData.length} Active Users</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowSessionModal(false)}
+                className="px-6 py-2 bg-gray-800 dark:bg-white text-white dark:text-gray-800 text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:translate-y-[-2px] transition-all active:translate-y-0"
+              >
+                Close Audit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Query Inspector Modal */}
+      {viewingSessionQuery && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setViewingSessionQuery(null)} />
+          <div className="relative bg-[#1e1e1e] w-full max-w-4xl h-[70vh] flex flex-col rounded-2xl border border-white/10 shadow-3xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#252526]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                </div>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">Query Inspector</h3>
+              </div>
+              <button onClick={() => setViewingSessionQuery(null)} className="text-gray-400 hover:text-white transition-colors"><svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div className="flex-1 overflow-auto bg-[#1e1e1e] p-4 font-mono text-xs leading-relaxed">
+              <div className="flex h-full">
+                {/* Line Numbers */}
+                <div className="pr-4 border-r border-white/10 text-gray-600 text-right select-none">
+                  {viewingSessionQuery.split('\n').map((_, i) => (
+                    <div key={i} className="h-5">{i + 1}</div>
+                  ))}
+                </div>
+                {/* Code Content */}
+                <div className="pl-4 flex-1 text-blue-300 overflow-x-auto whitespace-pre">
+                  {viewingSessionQuery.split('\n').map((line, i) => (
+                    <div key={i} className="h-5 hover:bg-white/5 px-1 rounded transition-colors">{line || ' '}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-3 bg-[#252526] border-t border-white/10 flex justify-end">
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(viewingSessionQuery);
+                  // Optional: add a "Copied!" toast here
+                }}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded transition-all flex items-center gap-2"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" /></svg>
+                Copy Code
+              </button>
             </div>
           </div>
         </div>

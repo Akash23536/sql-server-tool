@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 interface ConnectionFormProps {
-  onConnect: (server: string, port: number, username: string, password: string) => Promise<void>;
+  onConnect: (server: string, port: number, username: string, password: string, name?: string, save?: boolean) => Promise<void>;
   onCancel: () => void;
   isConnecting: boolean;
   error: string | null;
@@ -12,6 +12,8 @@ export function ConnectionForm({ onConnect, onCancel, isConnecting, error }: Con
   const [port, setPort] = useState('2006');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [connectionName, setConnectionName] = useState('My SQL Server');
+  const [saveToDb, setSaveToDb] = useState(true);
   const [githubUser, setGithubUser] = useState<{name: string, avatar_url: string, html_url: string} | null>(null);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function ConnectionForm({ onConnect, onCancel, isConnecting, error }: Con
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onConnect(server, parseInt(port), username, password);
+    await onConnect(server, parseInt(port), username, password, connectionName, saveToDb);
   };
 
   return (
@@ -48,6 +50,20 @@ export function ConnectionForm({ onConnect, onCancel, isConnecting, error }: Con
             <div className="col-span-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm text-gray-500">
               Database Engine
             </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 items-center">
+            <label htmlFor="name" className="text-sm font-semibold text-gray-600 dark:text-gray-400">Connection Name:</label>
+            <input
+              type="text"
+              id="name"
+              placeholder="e.g. Production DB"
+              className="col-span-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm focus:outline-none focus:border-blue-500 dark:text-white"
+              value={connectionName}
+              onChange={(e) => setConnectionName(e.target.value)}
+              disabled={isConnecting}
+              required
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-4 items-center">
@@ -102,6 +118,20 @@ export function ConnectionForm({ onConnect, onCancel, isConnecting, error }: Con
             />
           </div>
 
+          <div className="grid grid-cols-3 gap-4 items-center">
+            <div className="col-start-2 col-span-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="saveToDb"
+                className="w-4 h-4 rounded text-blue-600"
+                checked={saveToDb}
+                onChange={(e) => setSaveToDb(e.target.checked)}
+                disabled={isConnecting}
+              />
+              <label htmlFor="saveToDb" className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-tighter">Save to MongoDB</label>
+            </div>
+          </div>
+
           {error && (
             <div className="p-3 bg-red-100 border border-red-200 text-red-700 text-xs font-bold rounded">
               Error: {error}
@@ -137,26 +167,23 @@ export function ConnectionForm({ onConnect, onCancel, isConnecting, error }: Con
         </form>
       </div>
 
-      {/* Powered By Watermark */}
-      <div className="absolute bottom-4 right-4 md:bottom-6 md:right-8 flex flex-col sm:flex-row items-end sm:items-center gap-1 md:gap-2 opacity-70 hover:opacity-100 transition-opacity z-20">
-        <span className="text-[9px] md:text-[10px] font-black text-gray-500 tracking-[0.2em] uppercase">Powered By</span>
-        <a
-          href={githubUser?.html_url || "https://github.com/Akash23536"}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors"
-          title="GitHub Profile"
-        >
-          {githubUser?.avatar_url ? (
-            <img src={githubUser.avatar_url} alt="GitHub Avatar" className="w-5 h-5 md:w-6 md:h-6 rounded-full shadow-sm border border-gray-300 dark:border-gray-600" />
-          ) : (
-            <svg viewBox="0 0 24 24" className="w-4 h-4 md:w-5 md:h-5 fill-current">
-              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-            </svg>
-          )}
-          <span className="font-extrabold text-[13px] md:text-[15px] tracking-tight uppercase">{githubUser?.name || 'AKASH'}</span>
-        </a>
-      </div>
+      {/* Powered By Watermark - Netflix Style with Avatar */}
+      <a 
+        href="https://github.com/Akash23536" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="absolute bottom-6 right-8 z-20 flex items-center gap-2 group transition-all hover:scale-105 active:scale-95 opacity-80 hover:opacity-100 bg-white/40 dark:bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-gray-200 dark:border-white/5 shadow-lg"
+      >
+        <div className="flex flex-col items-end -space-y-0.5">
+          <span className="text-[8px] font-light text-gray-500 dark:text-gray-400 uppercase tracking-[0.3em]">Powered By</span>
+          <span className="text-base font-black text-[#E50914] uppercase tracking-tighter transition-all group-hover:drop-shadow-[0_0_8px_rgba(229,9,20,0.4)]">Akash</span>
+        </div>
+        {githubUser?.avatar_url ? (
+          <img src={githubUser.avatar_url} alt="GitHub Avatar" className="w-6 h-6 rounded-full border border-[#E50914]/30 group-hover:border-[#E50914] transition-all" />
+        ) : (
+          <div className="w-6 h-6 rounded-full bg-[#E50914]/20 border border-[#E50914]/30" />
+        )}
+      </a>
     </div>
   );
 }
