@@ -85,7 +85,7 @@ function App() {
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 50;
   const [objectTotal, setObjectTotal] = useState(0);
   const [objectHasMore, setObjectHasMore] = useState(false);
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);
@@ -264,7 +264,12 @@ function App() {
         if (page === 1) {
           setObjects(result.objects);
         } else {
-          setObjects(prev => [...prev, ...result.objects]);
+          setObjects(prev => {
+            // Filter out duplicates that might have been loaded due to rapid scroll events
+            const existingKeys = new Set(prev.map(o => `${o.schemaName}.${o.objectName}`));
+            const newUniqueObjects = result.objects.filter(o => !existingKeys.has(`${o.schemaName}.${o.objectName}`));
+            return [...prev, ...newUniqueObjects];
+          });
         }
         
         setObjectTotal(result.total);

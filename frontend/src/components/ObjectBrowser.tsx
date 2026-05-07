@@ -132,7 +132,7 @@ export function ObjectBrowser({
           onLoadMore();
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1, rootMargin: '100px' }
     );
     if (loadingRef.current) observerRef.current.observe(loadingRef.current);
     return () => observerRef.current?.disconnect();
@@ -386,7 +386,7 @@ export function ObjectBrowser({
           <div className="divide-y divide-gray-200/50 dark:divide-white/5 pb-10">
             {objects.map((obj) => (
               <div
-                key={`${obj.objectType}-${obj.objectName}`}
+                key={`${obj.schemaName}-${obj.objectType}-${obj.objectName}`}
                 className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 cursor-pointer text-[10px] md:text-xs transition-colors ${selectedObject?.objectName === obj.objectName ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100' : 'hover:bg-gray-200 dark:hover:bg-white/5 dark:text-gray-300'}`}
                 onClick={() => onSelectObject(obj, 'highlight')}
                 onContextMenu={(e) => handleContextMenu(e, obj)}
@@ -397,8 +397,8 @@ export function ObjectBrowser({
                 <span className="flex-1 min-w-0 text-[10px] md:text-xs break-words">{obj.schemaName ? `${obj.schemaName}.${obj.objectName}` : obj.objectName}</span>
               </div>
             ))}
-            <div ref={loadingRef} className="p-2 text-center text-[10px] text-gray-400">
-              {isLoading ? 'Loading objects...' : (hasMore ? 'Scroll for more' : 'End of list')}
+            <div ref={loadingRef} className="p-4 text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest animate-pulse">
+              {isLoading ? 'Loading more objects...' : (hasMore ? 'Scroll for more' : 'End of list')}
             </div>
           </div>
         )}
