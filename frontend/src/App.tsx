@@ -1,6 +1,5 @@
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { useState, useEffect, useRef } from 'react';
-import { ConnectionForm } from './components/ConnectionForm';
 import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
 import { ResultsGrid } from './components/ResultsGrid';
@@ -9,7 +8,6 @@ import { ObjectCompare } from './components/ObjectCompare';
 import { ExcelTool } from './components/ExcelTool';
 import { Auth } from './components/Auth';
 import { ServerLog } from './components/ServerLog';
-import { ConnectionDrawer } from './components/ConnectionDrawer';
 import {
   connectToServer,
   getDatabases,
@@ -41,9 +39,6 @@ function App() {
 
   // Connection state
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isAutoReconnecting, setIsAutoReconnecting] = useState(true);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionConfig, setConnectionConfig] = useState<ConnectionConfig | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('app_authToken'));
   const [authUser, setAuthUser] = useState<string | null>(() => localStorage.getItem('app_authUser'));
@@ -110,7 +105,6 @@ function App() {
   const [queryController, setQueryController] = useState<AbortController | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [isConnectionDrawerOpen, setIsConnectionDrawerOpen] = useState(false);
   const [showModifiedObjects, setShowModifiedObjects] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [showExcelTool, setShowExcelTool] = useState(false);
@@ -169,9 +163,6 @@ function App() {
   const handleConnect = async (server: string, port: number, username: string, password: string, name?: string, save?: boolean) => {
     // Create new AbortController for this connection attempt
     const controller = new AbortController();
-    setIsConnecting(true);
-    setConnectionError(null);
-
     // Auto-cancel after 15 seconds timeout
     const timeoutId = setTimeout(() => {
       controller.abort();
@@ -207,28 +198,16 @@ function App() {
         await loadDatabases();
         // setSidebarTab('objects'); // Switch to explorer on success
       } else {
-        setConnectionError(result.error || 'Connection failed');
+        console.error(result.error || 'Connection failed');
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        setConnectionError('Connection cancelled');
-      } else {
-        setConnectionError(error.message || 'Connection failed');
+      if (error.name !== 'AbortError') {
+        console.error(error.message || 'Connection failed');
       }
-    } finally {
-      setIsConnecting(false);
     }
   };
 
-  // Cancel connection
-  const handleCancel = () => {
-    // Note: To truly cancel, we'd need to store the controller in a ref or state
-    // but for now, let's just reset the state as we've simplified the UI.
-    setIsConnecting(false);
-    setConnectionError('Connection cancelled');
-    setShowConnectionModal(false);
-  };
 
   // Load databases
   const loadDatabases = async () => {
@@ -237,7 +216,6 @@ function App() {
       setDatabases(dbs);
     } catch (error: any) {
       console.error('Failed to load databases:', error);
-      setConnectionError('Failed to load databases: ' + error.message);
     }
   };
 
