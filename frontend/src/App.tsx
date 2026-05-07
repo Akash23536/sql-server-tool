@@ -65,15 +65,11 @@ function App() {
             // Network error - keep credentials, just show login form
           })
           .finally(() => {
-            setIsAutoReconnecting(false);
           });
       } catch {
         // Corrupt data - clear it
         localStorage.removeItem('sqlConnectionConfig');
-        setIsAutoReconnecting(false);
       }
-    } else {
-      setIsAutoReconnecting(false);
     }
   }, []);
 
