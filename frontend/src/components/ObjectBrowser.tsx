@@ -36,7 +36,6 @@ interface ObjectBrowserProps {
   onShowExcelTool?: () => void;
   onShowCompare?: (obj: DbObject) => void;
   isConnected?: boolean;
-  onShowConnectionForm?: () => void;
   onShowSessions?: () => void;
 }
 
@@ -61,7 +60,6 @@ export const ObjectBrowser = memo(({
   onShowExcelTool,
   onShowCompare,
   isConnected,
-  onShowConnectionForm,
   onShowSessions,
 }: ObjectBrowserProps) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: DbObject } | null>(null);

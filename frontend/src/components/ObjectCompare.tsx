@@ -26,7 +26,7 @@ export function ObjectCompare({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [targetExists, setTargetExists] = useState<boolean | null>(null);
-  const [dbSearchTerm, setDbSearchTerm] = useState('');
+
 
   useEffect(() => {
     if (isOpen && selectedObject && selectedDatabase) {

@@ -32,7 +32,6 @@ interface SidebarProps {
   onShowCompare: (obj: DbObject) => void;
   onShowSessions: () => void;
   setShowLogoutConfirm: (val: boolean) => void;
-  authUser: string | null;
 }
 
 export const Sidebar = ({
@@ -64,8 +63,7 @@ export const Sidebar = ({
   onShowExcelTool,
   onShowCompare,
   onShowSessions,
-  setShowLogoutConfirm,
-  authUser
+  setShowLogoutConfirm
 }: SidebarProps) => {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] border-r border-gray-300 dark:border-[#3c3c3c]">

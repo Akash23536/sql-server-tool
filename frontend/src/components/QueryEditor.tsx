@@ -14,7 +14,7 @@ interface QueryEditorProps {
   onToggleAI: (open: boolean) => void;
   queryError?: string | null;
   fontSize: number;
-  setFontSize: (size: number) => void;
+  setFontSize: (size: number | ((prev: number) => number)) => void;
 }
 
 export function QueryEditor({ 
@@ -197,18 +197,15 @@ export function QueryEditor({
 
   const handleZoomIn = () => {
     vibrate(5);
-    setFontSize(prev => Math.min(prev + 2, 32));
+    setFontSize((prev: number) => Math.min(prev + 2, 32));
   };
 
   const handleZoomOut = () => {
     vibrate(5);
-    setFontSize(prev => Math.max(prev - 2, 8));
+    setFontSize((prev: number) => Math.max(prev - 2, 8));
   };
 
-  const handleZoomReset = () => {
-    vibrate(5);
-    setFontSize(14);
-  };
+
 
   const getLineNumbers = () => {
     const lines = query.split('\n');
