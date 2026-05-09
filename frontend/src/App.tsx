@@ -726,7 +726,6 @@ function App() {
                 }}
                 onShowSessions={() => handleShowSessions()}
                 setShowLogoutConfirm={setShowLogoutConfirm}
-                authUser={authUser}
               />
               <button onClick={() => setIsSidebarVisible(false)} className="absolute top-1/2 -right-4 w-8 h-8 bg-[#0078d4] text-white rounded-full flex items-center justify-center shadow-lg">◀</button>
             </div>
@@ -770,7 +769,6 @@ function App() {
                   }}
                   onShowSessions={() => handleShowSessions()}
                   setShowLogoutConfirm={setShowLogoutConfirm}
-                  authUser={authUser}
                 />
               </Panel>
               <PanelResizeHandle className="resize-handle-horizontal" />
