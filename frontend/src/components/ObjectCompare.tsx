@@ -26,6 +26,7 @@ export function ObjectCompare({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [targetExists, setTargetExists] = useState<boolean | null>(null);
+  const [dbSearchTerm, setDbSearchTerm] = useState('');
 
   useEffect(() => {
     if (isOpen && selectedObject && selectedDatabase) {
@@ -41,6 +42,8 @@ export function ObjectCompare({
 
   useEffect(() => {
     if (isOpen && selectedObject && targetDatabase) {
+      setTargetExists(null);
+      setError(null);
       fetchTargetScript();
     } else {
         setTargetScript('');
@@ -102,7 +105,7 @@ export function ObjectCompare({
         <div className="modal-header">
           <div className="header-title-row">
             <span className="compare-icon">↔️</span>
-            <h2>Compare Object: <span className="highlight-text">{selectedObject?.objectName}</span></h2>
+            <h2 title={`Compare Object: ${selectedObject?.objectName}`}>Compare Object: <span className="highlight-text">{selectedObject?.objectName}</span></h2>
           </div>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
@@ -116,14 +119,19 @@ export function ObjectCompare({
                 {selectedDatabase}
               </div>
             </div>
-            <div className="compare-arrow">➡️</div>
-            <div className="control-group">
-              <label>Target Database</label>
+            <div className="compare-arrow">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+            </div>
+            <div className="control-group flex-1 min-w-[300px]">
+              <label>Target Database (Searchable)</label>
               <DatabaseSearchSelector
                 databases={databases.filter(db => db.name !== selectedDatabase)}
                 selectedDatabase={targetDatabase}
                 onSelectDatabase={setTargetDatabase}
-                placeholder="Select Database to Compare"
+                placeholder="Type to search database..."
+                className="compare-db-selector"
               />
             </div>
           </div>
@@ -148,7 +156,15 @@ export function ObjectCompare({
               </div>
             )}
             <div className="diff-scroll-wrapper">
-              {targetExists !== false && (
+              {targetExists !== false && sourceScript && targetScript && sourceScript.replace(/\r\n/g, '\n').trim() === targetScript.replace(/\r\n/g, '\n').trim() ? (
+                <div className="empty-diff-placeholder" style={{ color: '#10b981', fontStyle: 'normal' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                    <svg style={{ width: '48px', height: '48px', marginBottom: '8px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <strong style={{ fontSize: '1.2rem' }}>Objects are Identical</strong>
+                    <span style={{ fontSize: '0.9rem', color: '#059669', opacity: 0.8 }}>No differences found between the source and target database.</span>
+                  </div>
+                </div>
+              ) : targetExists !== false && (
                 <ReactDiffViewer
                   oldValue={sourceScript}
                   newValue={targetScript}

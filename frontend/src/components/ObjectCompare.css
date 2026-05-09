@@ -9,6 +9,16 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.header-title-row h2 {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .compare-icon {
@@ -108,6 +118,15 @@
   background: #252526;
   color: #eee;
   border-color: #0078d4;
+}
+
+.compare-db-selector {
+  min-width: 350px !important;
+}
+
+.compare-db-selector .absolute.top-full {
+  min-width: 400px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
 }
 
 .diff-container {
@@ -223,4 +242,26 @@
   font-size: 1rem;
   text-align: center;
   padding: 40px;
+}
+
+@media (max-width: 768px) {
+  .compare-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .compare-arrow {
+    align-self: center;
+    transform: rotate(90deg);
+    padding: 0;
+  }
+  .compare-db-selector {
+    min-width: 100% !important;
+  }
+  .compare-db-selector .absolute.top-full {
+    min-width: 100%;
+  }
+  .header-title-row h2 {
+    font-size: 1.1rem;
+  }
 }

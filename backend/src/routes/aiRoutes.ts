@@ -50,4 +50,38 @@ router.post('/ask', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/models', async (req: Request, res: Response) => {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey || apiKey === 'your_groq_api_key_here') {
+    return res.status(401).json({ error: 'Groq API key not configured' });
+  }
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch models from Groq');
+    }
+
+    const data: any = await response.json();
+    // Filter and map to a simpler array if necessary, or just return the data
+    const activeModels = data.data
+      .filter((model: any) => !model.id.toLowerCase().includes('whisper') && !model.id.toLowerCase().includes('vision')) // Filter out non-text models if needed
+      .map((model: any) => ({
+        id: model.id,
+        name: model.id // We can just use the ID as the name
+      }));
+      
+    res.json(activeModels);
+  } catch (error: any) {
+    console.error('Models Error:', error);
+    res.status(500).json({ error: 'Failed to fetch models' });
+  }
+});
+
 export default router;

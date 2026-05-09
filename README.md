@@ -1,32 +1,35 @@
-# SQL Studio Pro
+# SQL Studio Pro 🚀
 
-A high-performance, IDE-like SQL Server management tool with AI integration, real-time auditing, and advanced session monitoring.
+A premium, SSMS-inspired web-based SQL Server management tool designed for speed, beauty, and efficiency. Built with React, Node.js, and Groq AI.
 
 Live Demo: [https://sql-server-tool.onrender.com/](https://sql-server-tool.onrender.com/)
 
 ---
 
-## 🚀 Key Features
+## ✨ Modern Features
 
-### 🔐 Secure Authentication
-- **Multi-Tenant Login:** Secure registration and login backed by MongoDB Atlas.
-- **JWT Protection:** All API endpoints are secured with JSON Web Tokens.
-- **Session Persistence:** Remembers your theme and workspace preferences across reloads.
-
-### 🔌 Server Management
-- **Saved Connections:** Save multiple SQL Server credentials (Host, Port, User) securely.
-- **Connection Status:** Real-time visual indicators of your server connection health.
-- **Quick Actions:** Connect and Disconnect directly from the saved servers list.
+### 🎨 Premium UI/UX
+- **SSMS Layout:** Familiar vertical/horizontal resizable panels for Object Explorer and Query Editor.
+- **Glassmorphism Design:** Modern aesthetics with curated HSL colors, smooth transitions, and dark mode support.
+- **Mobile Responsive:** Fully functional on mobile with touch-to-drag drawer support and responsive sidebars.
+- **Micro-Animations:** Interactive hover effects and haptic feedback (on supported devices).
 
 ### 🔍 Advanced Object Explorer
-- **Activity Log:** Track modified database objects over time.
-- **User Session Audit:** Real-time monitoring of active users, their device names, and their **Last Executed Query**.
-- **Deep Search:** Search inside object code (Stored Procedures, Views, Triggers) with high-speed indexing.
-- **Query Inspector:** Inspect full session queries in a dedicated viewer with line numbers and copy-to-clipboard support.
+- **Deep Search:** Search for any text, keyword, or dependency inside the code of Stored Procedures, Views, Triggers, and Agent Jobs.
+- **Activity Log:** Real-time view of recently modified database objects.
+- **Session Audit:** Monitor live user sessions, including their device names and **Last Executed Query**.
+- **Object Compare:** Compare schema objects across different databases with visual existence checks.
 
-### 🤖 AI Integration
-- **Natural Language to SQL:** Generate complex queries using simple English via Groq AI.
-- **Query Optimization:** Get AI suggestions to improve the performance of your SQL scripts.
+### 🤖 Smart AI Assistant
+- **Dynamic Model Discovery:** Automatically fetches the latest available models from Groq (Llama 3.3, Mixtral, etc.).
+- **Smart Prompt Editor:** Multi-line AI prompt window with line numbers and auto-resizing.
+- **SQL Generation:** Convert natural language instructions into high-performance SQL scripts instantly.
+
+### 📊 Powerful Query Editor
+- **Batch Support:** Handles the `GO` separator just like SSMS for multi-batch script execution.
+- **Smart Results Drawer:** Resizable, touch-responsive drawer that doesn't overlap your code.
+- **Excel Tool:** Export query results or database tables directly to Excel files, and import data back into SQL Server.
+- **History & Undo:** Full history of your recent queries with undo/redo capabilities.
 
 ---
 
@@ -34,49 +37,43 @@ Live Demo: [https://sql-server-tool.onrender.com/](https://sql-server-tool.onren
 
 ### Prerequisites
 - Node.js (v18 or higher)
-- MongoDB Atlas account (or local MongoDB)
-- Groq API key (free tier available)
+- MongoDB Atlas (for Auth and Auditing)
+- Groq API Key (for AI features)
+- SQL Server (target connection)
 
-### Step 1: Installation
+### 1. Installation
 ```bash
 git clone https://github.com/Akash23536/sql-server-tool.git
 cd sql-server-tool
 npm run install:all
 ```
 
-### Step 2: Configuration
+### 2. Environment Configuration
 Create a `.env` file in the `backend/` directory:
-```bash
+```env
 PORT=5000
-MONGO_URI=your_mongodb_atlas_uri
-GROQ_API_KEY=your_groq_api_key
-JWT_SECRET=your_secure_random_string
+MONGO_URI=mongodb+srv://...
+GROQ_API_KEY=gsk_...
+JWT_SECRET=your_secret_string
 ```
 
-### Step 3: Run Locally
+### 3. Production Build
 ```bash
-npm run dev
+npm run build
 ```
-- **Frontend:** [http://localhost:5174](http://localhost:5174)
-- **Backend:** [http://localhost:5000](http://localhost:5000)
+
+### 4. Running the App
+- **Development:** `npm run dev`
+- **Production:** `npm run start`
 
 ---
 
 ## 🌍 Deployment on Render
 
-### Build & Start
+This project is optimized for Render deployment:
 1. **Build Command:** `npm run render-build`
 2. **Start Command:** `npm run render-start`
-
-### Environment Variables
-Ensure you add `MONGO_URI`, `GROQ_API_KEY`, and `JWT_SECRET` in the Render dashboard's environment section.
-
----
-
-## 📂 Project Structure
-- `backend/`: Node.js/Express server with TypeScript, handling SQL connections and Auth.
-- `frontend/`: React/Vite application with a premium, responsive dashboard.
-- `root/`: Automated build and deployment scripts.
+3. **Environment Variables:** Set `MONGO_URI`, `GROQ_API_KEY`, and `JWT_SECRET` in the Render dashboard.
 
 ---
 

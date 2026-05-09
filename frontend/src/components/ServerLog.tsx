@@ -9,6 +9,8 @@ interface SavedConnection extends ConnectionConfig {
 interface ServerLogProps {
   currentConfig: ConnectionConfig | null;
   isConnected: boolean;
+  isAutoReconnecting?: boolean;
+  isDisconnecting?: boolean;
   onConnect: (config: ConnectionConfig) => void;
   onDisconnect: () => void;
 }
@@ -16,6 +18,8 @@ interface ServerLogProps {
 export const ServerLog = ({
   currentConfig,
   isConnected,
+  isAutoReconnecting,
+  isDisconnecting,
   onConnect,
   onDisconnect,
 }: ServerLogProps) => {
@@ -33,6 +37,7 @@ export const ServerLog = ({
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
 
   const fetchSavedConnections = async () => {
     const token = localStorage.getItem('app_authToken');
@@ -149,6 +154,18 @@ export const ServerLog = ({
     setTestStatus('idle');
   };
 
+  const handleConnectInList = async (conn: SavedConnection) => {
+    if (connectingId) return;
+    setConnectingId(conn._id);
+    try {
+      await onConnect(conn);
+    } finally {
+      setConnectingId(null);
+    }
+  };
+
+  const [showPassword, setShowPassword] = useState(false);
+
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const connectionToDelete = savedConnections.find(c => c._id === id);
@@ -173,8 +190,6 @@ export const ServerLog = ({
     }
   };
 
-  const [showPassword, setShowPassword] = useState(false);
-
   return (
     <div className="flex flex-col h-full bg-[#f3f3f3] dark:bg-[#1e1e1e]">
       {isAdding ? (
@@ -183,23 +198,25 @@ export const ServerLog = ({
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500">{editingId ? 'Edit Server' : 'Add Server'}</h3>
             <button onClick={() => setIsAdding(false)} className="text-[10px] font-bold text-blue-500 uppercase">Back</button>
           </div>
-          <form onSubmit={handleAddSubmit} className="space-y-4">
+          <div className="space-y-4">
+            {/* Extremely aggressive anti-autofill: No <form> tag, readOnly fields that unlock on focus */}
+
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Name</label>
-              <input required value={newName} onChange={e => setNewName(e.target.value)} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+              <input required value={newName} onChange={e => setNewName(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Server</label>
-              <input required value={newServer} onChange={e => setNewServer(e.target.value)} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+              <input required value={newServer} onChange={e => setNewServer(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Port</label>
-                <input required value={newPort} onChange={e => setNewPort(e.target.value)} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+                <input required value={newPort} onChange={e => setNewPort(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">User</label>
-                <input required name="sql_login_user" autoComplete="off" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+                <input required name="sql_user_field_unique" autoComplete="new-password" value={newUsername} onChange={e => setNewUsername(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
               </div>
             </div>
             <div className="space-y-1">
@@ -208,10 +225,12 @@ export const ServerLog = ({
                 <input 
                   required 
                   type={showPassword ? "text" : "password"} 
-                  name="sql_server_password_field" 
-                  autoComplete="off" 
+                  name="sql_pass_field_unique" 
+                  autoComplete="new-password" 
                   value={newPassword} 
                   onChange={e => setNewPassword(e.target.value)} 
+                  readOnly 
+                  onFocus={e => e.target.removeAttribute('readonly')}
                   className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none pr-8" 
                 />
                 <button
@@ -231,13 +250,14 @@ export const ServerLog = ({
             {testStatus === 'error' && <p className="text-[9px] text-red-500 font-bold uppercase tracking-tight">{errorMessage}</p>}
             
             <button 
-              type="submit" 
+              type="button" 
+              onClick={(e) => handleAddSubmit(e as any)}
               disabled={testStatus === 'testing' || testStatus === 'success'}
               className={`w-full py-2 text-white text-[10px] font-black uppercase tracking-widest rounded transition-all ${testStatus === 'success' ? 'bg-emerald-500' : 'bg-[#0078d4] hover:bg-[#0062af]'}`}
             >
               {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? 'Connected!' : 'Connect & Save'}
             </button>
-          </form>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col h-full overflow-hidden">
@@ -256,11 +276,14 @@ export const ServerLog = ({
               <div className="flex justify-center py-4"><div className="w-4 h-4 border-2 border-t-blue-500 rounded-full animate-spin"></div></div>
             ) : savedConnections.map(conn => {
               const isActive = isConnected && currentConfig?.server === conn.server && currentConfig?.port === conn.port;
+              const isPending = isAutoReconnecting && currentConfig?.server === conn.server && currentConfig?.port === conn.port;
+              const isCurrentlyConnecting = connectingId === conn._id || isPending;
+              
               return (
-                <div key={conn._id} className={`p-3 rounded border transition-all ${isActive ? 'bg-blue-500/10 border-blue-500' : 'bg-white dark:bg-[#252526] border-gray-200 dark:border-[#333]'}`}>
+                <div key={conn._id} className={`p-3 rounded border transition-all ${(isActive || isPending) ? 'bg-blue-500/10 border-blue-500' : 'bg-white dark:bg-[#252526] border-gray-200 dark:border-[#333]'}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col">
-                      <span className={`text-[10px] font-black uppercase tracking-tight ${isActive ? 'text-blue-500' : 'text-gray-700 dark:text-gray-200'}`}>{conn.name}</span>
+                      <span className={`text-[10px] font-black uppercase tracking-tight ${(isActive || isPending) ? 'text-blue-500' : 'text-gray-700 dark:text-gray-200'}`}>{conn.name}</span>
                       <span className="text-[8px] text-gray-500 uppercase">{conn.server}:{conn.port}</span>
                     </div>
                     <div className="flex gap-1">
@@ -271,15 +294,31 @@ export const ServerLog = ({
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-[8px] text-gray-400 uppercase">User: <span className="font-bold text-gray-600 dark:text-gray-400">{conn.username}</span></span>
                     {!isActive ? (
-                      <button onClick={() => onConnect(conn)} className="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[8px] font-black uppercase rounded transition-all">Connect</button>
+                      <button 
+                        onClick={() => handleConnectInList(conn)} 
+                        disabled={!!connectingId || isAutoReconnecting || isDisconnecting}
+                        className={`flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[8px] font-black uppercase rounded transition-all shadow-sm 
+                          ${(!!connectingId || isAutoReconnecting || isDisconnecting) && !isCurrentlyConnecting ? 'opacity-50 cursor-not-allowed' : ''} 
+                          ${isCurrentlyConnecting ? 'pr-2' : ''}`}
+                      >
+                        {isCurrentlyConnecting && (
+                          <div className="w-2.5 h-2.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        )}
+                        <span>{isCurrentlyConnecting ? 'Connecting...' : 'Connect'}</span>
+                      </button>
                     ) : (
                       <div className="flex items-center gap-2">
                         <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
                         <button 
                           onClick={(e) => { e.stopPropagation(); onDisconnect(); }}
-                          className="px-2 py-1 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-[8px] font-black uppercase rounded border border-red-500/20 transition-all"
+                          disabled={!!connectingId || isAutoReconnecting || isDisconnecting}
+                          className={`px-2 py-1 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-[8px] font-black uppercase rounded border border-red-500/20 transition-all flex items-center gap-1.5
+                            ${isDisconnecting ? '' : ((!!connectingId || isAutoReconnecting) ? 'opacity-50 cursor-not-allowed' : '')}`}
                         >
-                          Disconnect
+                          {isDisconnecting && (
+                            <div className="w-2.5 h-2.5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin"></div>
+                          )}
+                          <span>{isDisconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
                         </button>
                       </div>
                     )}

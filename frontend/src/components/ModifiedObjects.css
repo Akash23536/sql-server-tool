@@ -320,3 +320,23 @@
   background-color: #555;
   border-color: #666;
 }
+
+@media (max-width: 768px) {
+  .modal-content {
+    width: 98%;
+    max-height: 95vh;
+  }
+  .modal-header h2 {
+    font-size: 1.2rem;
+  }
+  .modal-body {
+    padding: 10px;
+    max-height: calc(95vh - 120px);
+  }
+  .table-wrapper {
+    min-width: 100%;
+  }
+  .modified-objects-table {
+    min-width: 800px;
+  }
+}

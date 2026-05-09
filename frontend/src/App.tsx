@@ -1,13 +1,15 @@
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import * as Panels from 'react-resizable-panels';
+const PanelGroup = (Panels as any).PanelGroup || (Panels as any).Group;
+const Panel = (Panels as any).Panel;
+const PanelResizeHandle = (Panels as any).PanelResizeHandle || (Panels as any).Separator;
 import { useState, useEffect, useRef } from 'react';
-import { ObjectBrowser } from './components/ObjectBrowser';
 import { QueryEditor } from './components/QueryEditor';
 import { ResultsGrid } from './components/ResultsGrid';
 import { ModifiedObjects } from './components/ModifiedObjects';
 import { ObjectCompare } from './components/ObjectCompare';
 import { ExcelTool } from './components/ExcelTool';
+import { Sidebar } from './components/Sidebar';
 import { Auth } from './components/Auth';
-import { ServerLog } from './components/ServerLog';
 import {
   connectToServer,
   getDatabases,
@@ -40,6 +42,8 @@ function App() {
   // Connection state
   const [isConnected, setIsConnected] = useState(false);
   const [connectionConfig, setConnectionConfig] = useState<ConnectionConfig | null>(null);
+  const [isAutoReconnecting, setIsAutoReconnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('app_authToken'));
   const [authUser, setAuthUser] = useState<string | null>(() => localStorage.getItem('app_authUser'));
   const [sidebarTab, setSidebarTab] = useState<'servers' | 'objects'>('servers');
@@ -50,21 +54,25 @@ function App() {
     if (saved) {
       try {
         const config: ConnectionConfig = JSON.parse(saved);
+        setConnectionConfig(config);
+        setIsAutoReconnecting(true);
+        
         // Silently reconnect - NEVER clear credentials on failure, only on explicit disconnect
         connectToServer(config)
           .then(async (result) => {
             if (result.success) {
               setIsConnected(true);
-              setConnectionConfig(config);
               await loadDatabases();
+            } else {
+              // Failed to connect - clear config so UI doesn't look "half-active"
+              setConnectionConfig(null);
             }
-            // If failed (server down/restarted), just fall through to the login form
-            // Keep credentials saved so next reload can try again
           })
           .catch(() => {
-            // Network error - keep credentials, just show login form
+            setConnectionConfig(null);
           })
           .finally(() => {
+            setIsAutoReconnecting(false);
           });
       } catch {
         // Corrupt data - clear it
@@ -81,7 +89,7 @@ function App() {
   const [objects, setObjects] = useState<DbObject[]>([]);
   const [selectedObject, setSelectedObject] = useState<DbObject | null>(null);
   const [objectFilter, setObjectFilter] = useState<ObjectTypeFilter>(() => (localStorage.getItem('sql_lastFilter') as ObjectTypeFilter) || 'all');
-  const [objectScript, setObjectScript] = useState<string | null>(null);
+
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -99,6 +107,8 @@ function App() {
   const [queryError, setQueryError] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<string | null>(null);
   const [queryController, setQueryController] = useState<AbortController | null>(null);
+  const [viewingSessionQuery, setViewingSessionQuery] = useState<string | null>(null);
+  const [copiedQuery, setCopiedQuery] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [showModifiedObjects, setShowModifiedObjects] = useState(false);
@@ -114,9 +124,9 @@ function App() {
   const [isDeepSearch, setIsDeepSearch] = useState(false);
   const [drawerHeight, setDrawerHeight] = useState(55);
   const drawerDragRef = useRef<{startY: number; startHeight: number} | null>(null);
+  const [editorFontSize, setEditorFontSize] = useState(14);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [viewingSessionQuery, setViewingSessionQuery] = useState<string | null>(null);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -219,7 +229,6 @@ function App() {
   const handleSelectDatabase = async (db: string) => {
     setSelectedDatabase(db);
     setSelectedObject(null);
-    setObjectScript(null);
     setObjects([]);
     setQueryResult(null);
     setCurrentPage(1);
@@ -297,7 +306,6 @@ function App() {
   const handleObjectTypeFilter = (type: ObjectTypeFilter) => {
     setObjectFilter(type);
     setSelectedObject(null);
-    setObjectScript(null);
     setCurrentPage(1);
     setObjectTotal(0);
     setObjectHasMore(false);
@@ -366,9 +374,9 @@ function App() {
     if (selectedDatabase) {
       try {
         const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action, obj.schemaName);
-        setObjectScript(script);
+        setQuery(script); // Force update query directly
       } catch (error: any) {
-        setObjectScript('Failed to load script');
+        setQuery('Failed to load script');
       }
     }
   };
@@ -391,9 +399,9 @@ function App() {
       if (action !== 'highlight') {
         try {
           const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action, obj.schemaName);
-          setObjectScript(script);
+          setQuery(script); // Force update query directly
         } catch (error: any) {
-          setObjectScript('Failed to load script');
+          setQuery('Failed to load script');
         }
       }
     }
@@ -474,28 +482,44 @@ function App() {
 
   // Handle disconnect
   const handleDisconnect = async () => {
-    await disconnect();
-    localStorage.removeItem('sqlConnectionConfig');
-    localStorage.removeItem('sql_lastQuery');
-    localStorage.removeItem('sql_lastDb');
-    localStorage.removeItem('sql_lastFilter');
-    localStorage.removeItem('sql_lastSearch');
-    
-    setIsConnected(false);
-    setConnectionConfig(null);
-    setDatabases([]);
-    setSelectedDatabase('');
-    setObjects([]);
-    setSelectedObject(null);
-    setObjectScript(null);
-    setQueryResult(null);
-    setAiResult(null);
-    setQuery('');
-    setSearchTerm('');
-    setObjectFilter('all');
+    setIsDisconnecting(true);
+    try {
+      await disconnect();
+      localStorage.removeItem('sqlConnectionConfig');
+      setIsConnected(false);
+      setConnectionConfig(null);
+      setDatabases([]);
+      setSelectedDatabase('');
+      setObjects([]);
+      setSelectedObject(null);
+      setQueryResult(null);
+      setAiResult(null);
+      setQuery('');
+      setSearchTerm('');
+      setObjectFilter('all');
+    } catch (error) {
+      console.error('Disconnect failed:', error);
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+
+  const clearSqlStorage = () => {
+    const keysToRemove = [
+      'sqlConnectionConfig',
+      'sql_lastQuery',
+      'sql_lastDb',
+      'sql_lastFilter',
+      'sql_lastSearch',
+      'searchHistory'
+    ];
+    keysToRemove.forEach(k => localStorage.removeItem(k));
   };
 
   const handleAppLogin = (token: string, username: string) => {
+    // Clear previous SQL session data on new login
+    clearSqlStorage();
+    
     localStorage.setItem('app_authToken', token);
     localStorage.setItem('app_authUser', username);
     setAuthToken(token);
@@ -505,6 +529,8 @@ function App() {
   const handleAppLogout = () => {
     localStorage.removeItem('app_authToken');
     localStorage.removeItem('app_authUser');
+    clearSqlStorage();
+    
     setAuthToken(null);
     setAuthUser(null);
     handleDisconnect(); // also disconnect from SQL
@@ -515,82 +541,6 @@ function App() {
     return <Auth onLogin={handleAppLogin} />;
   }
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e] border-r border-gray-300 dark:border-[#3c3c3c]">
-      {/* Sidebar Tabs */}
-      <div className="flex bg-[#dee1e6] dark:bg-[#2d2d2d] border-b border-gray-300 dark:border-[#3c3c3c]">
-        <button 
-          onClick={() => setSidebarTab('servers')}
-          className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'servers' ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] border-t-2 border-t-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-[#3c3c3c]'}`}
-        >
-          Server Connection
-        </button>
-        <button 
-          onClick={() => setSidebarTab('objects')}
-          className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'objects' ? 'bg-white dark:bg-[#1e1e1e] text-[#0078d4] border-t-2 border-t-[#0078d4]' : 'text-gray-500 hover:bg-gray-300 dark:hover:bg-[#3c3c3c]'}`}
-        >
-          Explorer
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-hidden">
-        {sidebarTab === 'servers' ? (
-          <ServerLog 
-            currentConfig={connectionConfig}
-            isConnected={isConnected}
-            onConnect={(config) => handleConnect(config.server, config.port, config.username, config.password)}
-            onDisconnect={handleDisconnect}
-          />
-        ) : (
-          <ObjectBrowser
-            databases={databases}
-            selectedDatabase={selectedDatabase}
-            isOffline={databases.find(db => db.name === selectedDatabase)?.status === 'OFFLINE'}
-            onSelectDatabase={handleSelectDatabase}
-            objects={objects}
-            onSelectObject={handleSelectObject}
-            selectedObject={selectedObject}
-            onObjectTypeFilter={handleObjectTypeFilter}
-            currentFilter={objectFilter}
-            hasMore={objectHasMore}
-            isLoading={isLoadingObjects}
-            onLoadMore={loadMoreObjects}
-            totalObjects={objectTotal}
-            onSearch={handleSearch}
-            searchTerm={searchTerm}
-            isDeepSearch={isDeepSearch}
-            onToggleDeepSearch={setIsDeepSearch}
-            onShowModifiedObjects={() => setShowModifiedObjects(true)}
-            onShowExcelTool={() => setShowExcelTool(true)}
-            onShowCompare={(obj) => {
-              setObjectToCompare(obj);
-              setShowCompareModal(true);
-            }}
-            isConnected={isConnected}
-            onShowSessions={() => handleShowSessions()}
-          />
-        )}
-      </div>
-
-      {/* Sidebar Footer with Logout and Version */}
-      <div className="p-3 bg-gray-50 dark:bg-[#252526] border-t border-gray-300 dark:border-[#3c3c3c] flex items-center justify-between">
-        <button 
-          onClick={() => setShowLogoutConfirm(true)}
-          className="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all group"
-          title="Sign Out"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-          </svg>
-          <span className="text-[10px] font-black uppercase tracking-tight">Sign Out</span>
-        </button>
-        <div className="flex flex-col items-end">
-          <span className="text-[8px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Version</span>
-          <span className="text-[10px] font-black text-[#0078d4] dark:text-[#5bb4ff] tracking-widest uppercase leading-none mt-0.5">V{new Date().toISOString().split('T')[0].replace(/-/g, '')}</span>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className={`app h-screen flex flex-col ${isDarkTheme ? 'dark' : ''}`} data-theme={isDarkTheme ? 'dark' : 'light'}>
@@ -599,7 +549,14 @@ function App() {
         <div className="flex items-center gap-3">
           {/* Compact User Section (Now serves as Sidebar Toggle) */}
           <div 
-            onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+            onClick={() => {
+              if (!isConnected) {
+                setSidebarTab('servers');
+                setIsSidebarVisible(true);
+              } else {
+                setIsSidebarVisible(!isSidebarVisible);
+              }
+            }}
             className="flex items-center gap-2.5 px-2 py-1 bg-white/40 dark:bg-white/5 rounded-lg border border-white/30 dark:border-white/10 backdrop-blur-sm shadow-sm cursor-pointer hover:bg-white/60 dark:hover:bg-white/10 transition-all active:scale-95 group"
             title="Toggle Sidebar (Alt+B)"
           >
@@ -610,19 +567,54 @@ function App() {
               <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#dee1e6] dark:border-[#2d2d2d] ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
             </div>
             <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[9px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-tight leading-none">{authUser}</span>
-                {isConnected && connectionConfig && (
-                  <span className="text-[7px] font-bold text-[#0078d4] dark:text-[#5bb4ff] uppercase tracking-tighter leading-none border-l border-gray-400 dark:border-gray-600 pl-1.5">
-                    {connectionConfig.server}:{connectionConfig.port}
-                  </span>
-                )}
-              </div>
+              <span className="text-[11px] font-black text-gray-800 dark:text-gray-200 uppercase tracking-tight leading-tight">{authUser}</span>
+              {isConnected && connectionConfig && (
+                <span className="text-[9px] font-bold text-[#0078d4] dark:text-[#5bb4ff] uppercase tracking-tighter leading-none mt-0.5">
+                  {connectionConfig.username}@{connectionConfig.server}:{connectionConfig.port}
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Ask AI Button */}
+          <button
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(15);
+              setIsAIModalOpen(true);
+            }}
+            className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 bg-[#f0f9ff] dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-[#0078d4] border border-blue-200 dark:border-blue-800 rounded text-[10px] md:text-xs font-bold shadow-sm transition-all"
+            title="Ask AI (Alt+A)"
+          >
+            <span className="text-xs md:text-sm">🤖</span>
+            <span className="hidden sm:inline">Ask AI</span>
+          </button>
+
+          {/* Zoom Controls Native Dropdown */}
+          <div className="flex items-center min-w-max">
+            <select
+              value={Math.round((editorFontSize / 14) * 100)}
+              onChange={(e) => {
+                if (navigator.vibrate) navigator.vibrate(5);
+                setEditorFontSize(Math.round((parseInt(e.target.value, 10) / 100) * 14));
+              }}
+              className="bg-white dark:bg-[#1e1e1e] text-[#0078d4] text-[10px] md:text-[11px] font-bold border border-gray-300 dark:border-[#3c3c3c] rounded px-2 py-1 outline-none cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2d2d2d] shadow-sm transition-colors appearance-none h-6"
+              style={{ paddingRight: '1.5rem', backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%230078D4%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right .5rem top 50%', backgroundSize: '.65rem auto' }}
+              title="Zoom Level"
+            >
+              <option value="200">200%</option>
+              <option value="150">150%</option>
+              <option value="125">125%</option>
+              <option value="100">100%</option>
+              <option value="75">75%</option>
+              <option value="50">50%</option>
+              <option value="25">25%</option>
+            </select>
+          </div>
+
+          <div className="h-4 w-px bg-gray-300 dark:bg-gray-700 mx-1"></div>
+
           {/* Results Toggle */}
           <button 
             onClick={() => setIsResultsVisible(!isResultsVisible)}
@@ -703,17 +695,83 @@ function App() {
           <div className="fixed inset-0 z-[300] flex">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={() => setIsSidebarVisible(false)}/>
             <div className="relative w-[80%] h-full bg-white dark:bg-[#1e1e1e] shadow-2xl animate-slide-in-left">
-              <SidebarContent />
+              <Sidebar 
+                sidebarTab={sidebarTab}
+                setSidebarTab={setSidebarTab}
+                connectionConfig={connectionConfig}
+                isConnected={isConnected}
+                handleConnect={(s, p, u, pwd) => handleConnect(s, p, u, pwd)}
+                handleDisconnect={handleDisconnect}
+                databases={databases}
+                selectedDatabase={selectedDatabase}
+                onSelectDatabase={handleSelectDatabase}
+                objects={objects}
+                onSelectObject={handleSelectObject}
+                selectedObject={selectedObject}
+                onObjectTypeFilter={handleObjectTypeFilter}
+                objectFilter={objectFilter}
+                objectHasMore={objectHasMore}
+                isLoadingObjects={isLoadingObjects}
+                onLoadMore={loadMoreObjects}
+                objectTotal={objectTotal}
+                onSearch={handleSearch}
+                searchTerm={searchTerm}
+                isDeepSearch={isDeepSearch}
+                onToggleDeepSearch={setIsDeepSearch}
+                onShowModifiedObjects={() => setShowModifiedObjects(true)}
+                onShowExcelTool={() => setShowExcelTool(true)}
+                onShowCompare={(obj) => {
+                  setObjectToCompare(obj);
+                  setShowCompareModal(true);
+                }}
+                onShowSessions={() => handleShowSessions()}
+                setShowLogoutConfirm={setShowLogoutConfirm}
+                authUser={authUser}
+              />
               <button onClick={() => setIsSidebarVisible(false)} className="absolute top-1/2 -right-4 w-8 h-8 bg-[#0078d4] text-white rounded-full flex items-center justify-center shadow-lg">◀</button>
             </div>
           </div>
         )}
 
-        <PanelGroup orientation={isMobile ? "vertical" : "horizontal"}>
+        <PanelGroup direction={isMobile ? "vertical" : "horizontal"}>
           {!isMobile && isSidebarVisible && (
             <>
               <Panel defaultSize={25} minSize={15}>
-                <SidebarContent />
+                <Sidebar 
+                  sidebarTab={sidebarTab}
+                  setSidebarTab={setSidebarTab}
+                  connectionConfig={connectionConfig}
+                  isConnected={isConnected}
+                  isAutoReconnecting={isAutoReconnecting}
+                  isDisconnecting={isDisconnecting}
+                  handleConnect={(s, p, u, pwd) => handleConnect(s, p, u, pwd)}
+                  handleDisconnect={handleDisconnect}
+                  databases={databases}
+                  selectedDatabase={selectedDatabase}
+                  onSelectDatabase={handleSelectDatabase}
+                  objects={objects}
+                  onSelectObject={handleSelectObject}
+                  selectedObject={selectedObject}
+                  onObjectTypeFilter={handleObjectTypeFilter}
+                  objectFilter={objectFilter}
+                  objectHasMore={objectHasMore}
+                  isLoadingObjects={isLoadingObjects}
+                  onLoadMore={loadMoreObjects}
+                  objectTotal={objectTotal}
+                  onSearch={handleSearch}
+                  searchTerm={searchTerm}
+                  isDeepSearch={isDeepSearch}
+                  onToggleDeepSearch={setIsDeepSearch}
+                  onShowModifiedObjects={() => setShowModifiedObjects(true)}
+                  onShowExcelTool={() => setShowExcelTool(true)}
+                  onShowCompare={(obj) => {
+                    setObjectToCompare(obj);
+                    setShowCompareModal(true);
+                  }}
+                  onShowSessions={() => handleShowSessions()}
+                  setShowLogoutConfirm={setShowLogoutConfirm}
+                  authUser={authUser}
+                />
               </Panel>
               <PanelResizeHandle className="resize-handle-horizontal" />
             </>
@@ -723,12 +781,12 @@ function App() {
           <Panel defaultSize={isSidebarVisible && !isMobile ? 75 : 100} minSize={30}>
             <div className="main-panel h-full w-full relative overflow-hidden flex flex-col">
               {/* Query Editor - always takes available space */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden relative">
                 <QueryEditor
                   onExecute={handleExecuteQuery}
                   onCancel={handleCancelQuery}
                   isExecuting={isExecuting}
-                  script={objectScript}
+
                   isOffline={isOffline}
                   highlightTerm={(isDeepSearch && searchTerm) ? searchTerm : undefined}
                   query={query}
@@ -736,6 +794,8 @@ function App() {
                   queryError={queryError}
                   isAIModalOpen={isAIModalOpen}
                   onToggleAI={setIsAIModalOpen}
+                  fontSize={editorFontSize}
+                  setFontSize={setEditorFontSize}
                   onShowAIResult={(msg) => {
                     setQueryResult(null);
                     setQueryError(null);
@@ -751,11 +811,11 @@ function App() {
 
               {/* Results Bottom Drawer */}
               <div
-                className="absolute left-0 right-0 bottom-0 flex flex-col bg-white dark:bg-[#1e1e1e] border-t-2 border-[#0078d4] shadow-[0_-4px_24px_rgba(0,0,0,0.25)] z-50"
+                className="flex flex-col bg-white dark:bg-[#1e1e1e] border-t-2 border-[#0078d4] shadow-[0_-4px_24px_rgba(0,0,0,0.25)] z-50 flex-shrink-0"
                 style={{
-                  height: `${drawerHeight}%`,
-                  transform: isResultsVisible ? 'translateY(0)' : 'translateY(100%)',
-                  transition: drawerDragRef.current ? 'none' : 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                  height: isResultsVisible ? `${drawerHeight}%` : '0%',
+                  transition: drawerDragRef.current ? 'none' : 'height 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                  overflow: 'hidden'
                 }}
               >
                 {/* Drag Handle Bar */}
@@ -780,6 +840,26 @@ function App() {
                     };
                     window.addEventListener('mousemove', onMouseMove);
                     window.addEventListener('mouseup', onMouseUp);
+                  }}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    drawerDragRef.current = { startY: e.touches[0].clientY, startHeight: drawerHeight };
+                    const onTouchMove = (ev: TouchEvent) => {
+                      if (!drawerDragRef.current) return;
+                      const parentEl = (e.target as HTMLElement).closest('.main-panel');
+                      if (!parentEl) return;
+                      const parentHeight = parentEl.clientHeight;
+                      const delta = drawerDragRef.current.startY - ev.touches[0].clientY;
+                      const newHeight = drawerDragRef.current.startHeight + (delta / parentHeight) * 100;
+                      setDrawerHeight(Math.min(90, Math.max(15, newHeight)));
+                    };
+                    const onTouchEnd = () => {
+                      drawerDragRef.current = null;
+                      window.removeEventListener('touchmove', onTouchMove);
+                      window.removeEventListener('touchend', onTouchEnd);
+                    };
+                    window.addEventListener('touchmove', onTouchMove, { passive: false });
+                    window.addEventListener('touchend', onTouchEnd);
                   }}
                 >
                   <div className="w-8 h-1 rounded-full bg-[#0078d4]/50"/>
@@ -959,12 +1039,22 @@ function App() {
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(viewingSessionQuery);
-                  // Optional: add a "Copied!" toast here
+                  setCopiedQuery(true);
+                  setTimeout(() => setCopiedQuery(false), 2000);
                 }}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded transition-all flex items-center gap-2"
+                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded transition-all flex items-center gap-2 ${copiedQuery ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/5 hover:bg-white/10 text-white'}`}
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" /></svg>
-                Copy Code
+                {copiedQuery ? (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" /></svg>
+                    Copy Code
+                  </>
+                )}
               </button>
             </div>
           </div>

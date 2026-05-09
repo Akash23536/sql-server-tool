@@ -189,18 +189,6 @@ export const ObjectBrowser = memo(({
           />
         </div>
         <div className="flex gap-1.5">
-          {!isConnected && (
-            <button
-              onClick={() => onShowConnectionForm?.()}
-              className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[9px] font-black rounded shadow-sm transition-all hover:translate-y-[-1px] active:translate-y-[0px] uppercase tracking-wider"
-              title="Connect to SQL Server"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="truncate">Connect</span>
-            </button>
-          )}
           <button
             onClick={() => onShowModifiedObjects?.()}
             disabled={!selectedDatabase}
@@ -247,8 +235,9 @@ export const ObjectBrowser = memo(({
           <input
             ref={inputRef}
             type="text"
-            placeholder={isDeepSearch ? "Enter word to find in code..." : "Filter objects by name..."}
-            className={`w-full pl-8 py-1.5 md:py-2 bg-gray-100 dark:bg-white/5 border-none rounded text-[11px] md:text-xs outline-none focus:ring-1 focus:ring-[#0078d4]/50 transition-all font-medium dark:text-gray-200 ${isDeepSearch ? 'pr-14' : 'pr-10'}`}
+            disabled={!isConnected}
+            placeholder={!isConnected ? "Connect to browse objects..." : (isDeepSearch ? "Enter word to find in code..." : "Filter objects by name...")}
+            className={`w-full pl-8 py-1.5 md:py-2 bg-gray-100 dark:bg-white/5 border-none rounded text-[11px] md:text-xs outline-none focus:ring-1 focus:ring-[#0078d4]/50 transition-all font-medium dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed ${isDeepSearch ? 'pr-14' : 'pr-10'}`}
             value={localSearchTerm}
             onChange={(e) => setLocalSearchTerm(e.target.value)}
             onKeyDown={(e) => {
@@ -319,7 +308,8 @@ export const ObjectBrowser = memo(({
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => onToggleDeepSearch?.(!isDeepSearch)}
-              className={`relative w-8 h-4 rounded-full transition-colors ${isDeepSearch ? 'bg-[#0078d4]' : 'bg-gray-300 dark:bg-gray-700'}`}
+              disabled={!isConnected}
+              className={`relative w-8 h-4 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${isDeepSearch ? 'bg-[#0078d4]' : 'bg-gray-300 dark:bg-gray-700'}`}
               title="Toggle Advance Search (Search inside object code)"
             >
               <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isDeepSearch ? 'left-[18px]' : 'left-0.5 shadow-sm'}`} />
@@ -335,7 +325,8 @@ export const ObjectBrowser = memo(({
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
           <select 
-            className="text-[10px] font-bold bg-transparent border-none focus:outline-none text-gray-600 dark:text-gray-300 cursor-pointer"
+            disabled={!isConnected}
+            className="text-[10px] font-bold bg-transparent border-none focus:outline-none text-gray-600 dark:text-gray-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             value={currentFilter}
             onChange={(e) => onObjectTypeFilter(e.target.value as ObjectTypeFilter)}
           >
@@ -380,7 +371,7 @@ export const ObjectBrowser = memo(({
               <div
                 key={`${obj.schemaName}-${obj.objectType}-${obj.objectName}`}
                 className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 cursor-pointer text-[10px] md:text-xs transition-colors ${selectedObject?.objectName === obj.objectName ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100' : 'hover:bg-gray-200 dark:hover:bg-white/5 dark:text-gray-300'}`}
-                onClick={() => onSelectObject(obj, 'highlight')}
+                onClick={() => onSelectObject(obj, 'select')}
                 onContextMenu={(e) => handleContextMenu(e, obj)}
               >
                 <span className={`w-4 h-4 md:w-5 md:h-5 flex items-center justify-center text-[7px] md:text-[8px] font-black rounded border border-gray-300 dark:border-gray-600 ${selectedObject?.objectName === obj.objectName ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>

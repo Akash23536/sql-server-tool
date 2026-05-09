@@ -1,5 +1,10 @@
 const API_BASE = (import.meta.env.VITE_API_URL?.replace(/\/$/, '') || (import.meta.env.DEV ? 'http://localhost:5000' : '')) + '/api';
 
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('app_authToken');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
 export interface ConnectionConfig {
   server: string;
   port: number;
@@ -81,7 +86,7 @@ export const connectToServer = async (config: ConnectionConfig, signal?: AbortSi
   try {
     const response = await fetch(`${API_BASE}/connect`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(config),
       signal,
     });
@@ -98,7 +103,7 @@ export const connectToServer = async (config: ConnectionConfig, signal?: AbortSi
 
 // Get list of databases
 export const getDatabases = async (): Promise<Database[]> => {
-  const response = await fetch(`${API_BASE}/databases`);
+  const response = await fetch(`${API_BASE}/databases`, { headers: getAuthHeaders() });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to get databases');
@@ -120,7 +125,7 @@ export interface ObjectCounts {
 // Get object counts for a database
 export const getObjectCounts = async (database: string): Promise<ObjectCounts> => {
   const params = new URLSearchParams({ database });
-  const response = await fetch(`${API_BASE}/object-counts?${params}`);
+  const response = await fetch(`${API_BASE}/object-counts?${params}`, { headers: getAuthHeaders() });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to get object counts');
@@ -152,7 +157,7 @@ export const getObjects = async (
     params.append('compareWith', compareWith);
   }
   
-  const response = await fetch(`${API_BASE}/objects?${params}`);
+  const response = await fetch(`${API_BASE}/objects?${params}`, { headers: getAuthHeaders() });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to get objects');
@@ -166,7 +171,7 @@ export const getObjectScript = async (database: string, objectName: string, obje
   if (objectSchema) {
     params.append('objectSchema', objectSchema);
   }
-  const response = await fetch(`${API_BASE}/script?${params}`);
+  const response = await fetch(`${API_BASE}/script?${params}`, { headers: getAuthHeaders() });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to get script');
@@ -190,7 +195,7 @@ export const searchScripts = async (
     pageNumber: pageNumber.toString(),
     pageSize: pageSize.toString()
   });
-  const response = await fetch(`${API_BASE}/search-scripts?${params}`);
+  const response = await fetch(`${API_BASE}/search-scripts?${params}`, { headers: getAuthHeaders() });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to search scripts');
@@ -202,7 +207,7 @@ export const searchScripts = async (
 export const executeQuery = async (database: string, query: string, signal?: AbortSignal): Promise<QueryResult> => {
   const response = await fetch(`${API_BASE}/query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ database, query }),
     signal,
   });
@@ -237,7 +242,7 @@ export const getModifiedObjects = async (
     params.append('searchTerm', searchTerm);
   }
   
-  const response = await fetch(`${API_BASE}/modified-objects?${params}`);
+  const response = await fetch(`${API_BASE}/modified-objects?${params}`, { headers: getAuthHeaders() });
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to get modified objects');
@@ -250,7 +255,7 @@ export const askAI = async (query: string, prompt: string, error?: string, model
   // Use the AI specific endpoint
   const response = await fetch(`${API_BASE}/ai/ask`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ query, prompt, error, model }),
   });
   
@@ -259,5 +264,15 @@ export const askAI = async (query: string, prompt: string, error?: string, model
     throw new Error(error.error || 'AI request failed');
   }
   
+  return response.json();
+};
+
+// Get available AI Models
+export const getAIModels = async (): Promise<{ id: string; name: string }[]> => {
+  const response = await fetch(`${API_BASE}/ai/models`, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch AI models');
+  }
   return response.json();
 };

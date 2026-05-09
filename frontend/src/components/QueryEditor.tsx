@@ -1,11 +1,10 @@
 import { useRef, useEffect, useState } from 'react';
-import { askAI } from '../api';
+import { askAI, getAIModels } from '../api';
 
 interface QueryEditorProps {
   onExecute: (query: string) => Promise<void>;
   onCancel: () => void;
   isExecuting: boolean;
-  script: string | null;
   isOffline?: boolean;
   highlightTerm?: string;
   query: string;
@@ -14,13 +13,14 @@ interface QueryEditorProps {
   isAIModalOpen: boolean;
   onToggleAI: (open: boolean) => void;
   queryError?: string | null;
+  fontSize: number;
+  setFontSize: (size: number) => void;
 }
 
 export function QueryEditor({ 
   onExecute, 
   onCancel, 
   isExecuting, 
-  script, 
   isOffline = false, 
   highlightTerm,
   query,
@@ -28,15 +28,32 @@ export function QueryEditor({
   onShowAIResult,
   isAIModalOpen,
   onToggleAI,
-  queryError
+  queryError,
+  fontSize,
+  setFontSize
 }: QueryEditorProps) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiModel, setAiModel] = useState('llama-3.3-70b-versatile');
   const [isAILoading, setIsAILoading] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [fontSize, setFontSize] = useState(14);
+  const [availableModels, setAvailableModels] = useState<{id: string, name: string}[]>([]);
   const isUndoAction = useRef(false);
+
+  useEffect(() => {
+    if (isAIModalOpen && availableModels.length === 0) {
+      getAIModels().then(models => {
+        if (models && models.length > 0) {
+          setAvailableModels(models);
+          // Auto-select a valid model if current is discontinued
+          if (!models.find(m => m.id === aiModel)) {
+            const defaultModel = models.find(m => m.id.includes('llama-3.3')) || models[0];
+            setAiModel(defaultModel.id);
+          }
+        }
+      }).catch(err => console.error("Failed to load models", err));
+    }
+  }, [isAIModalOpen]);
 
   const vibrate = (pattern: number | number[] = 10) => {
     if (navigator.vibrate) navigator.vibrate(pattern as any);
@@ -46,11 +63,7 @@ export function QueryEditor({
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (script !== null) {
-      onQueryChange(script);
-    }
-  }, [script, onQueryChange]);
+
 
   // Handle History for Undo
   useEffect(() => {
@@ -257,82 +270,18 @@ export function QueryEditor({
               <span className="hidden sm:inline">Redo</span>
             </button>
 
-            {/* Paste Button */}
-            <button
-              onClick={async () => {
-                vibrate(10);
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) onQueryChange(query + (query ? '\n' : '') + text);
-                } catch (err) {
-                  alert('Click into the editor and use Ctrl+V to paste. Browser security prevented automatic pasting.');
-                }
-              }}
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-[#0078d4] border border-gray-300 dark:border-gray-600 rounded text-[10px] md:text-xs font-bold shadow-sm transition-all"
-              title="Paste from Clipboard"
-            >
-              <span className="text-xs md:text-sm">📋</span>
-              <span className="hidden sm:inline">Paste</span>
-            </button>
-
-            {/* Dedicated Copy Button */}
-            <button
-              onClick={() => { vibrate(10); navigator.clipboard.writeText(query); }}
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-[#0078d4] border border-gray-300 dark:border-gray-600 rounded text-[10px] md:text-xs font-bold shadow-sm transition-all"
-              title="Copy to Clipboard"
-            >
-              <span className="text-xs md:text-sm">📑</span>
-              <span className="hidden sm:inline">Copy</span>
-            </button>
-
-            {/* Clear All Button */}
+            {/* Clear Editor Button */}
             <button
               onClick={() => { vibrate(30); onQueryChange(''); }}
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-900/50 rounded text-[10px] md:text-xs font-bold shadow-sm transition-all"
-              title="Clear All"
+              className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-[#252526] hover:bg-red-500 dark:hover:bg-red-600 text-gray-600 dark:text-gray-300 hover:text-white border border-gray-300 dark:border-[#3c3c3c] hover:border-red-500 dark:hover:border-red-600 rounded text-[11px] font-bold transition-all shadow-sm group"
+              title="Clear Editor"
             >
-              <span className="text-sm">🗑️</span>
-              <span className="hidden sm:inline">Clear</span>
+              <svg className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span className="hidden sm:inline tracking-wide">CLEAR</span>
             </button>
 
-            <div className="h-4 md:h-6 w-px bg-gray-300 dark:bg-gray-700 mx-1"></div>
-
-            {/* Groq AI Button */}
-            <button
-              onClick={() => { vibrate(15); onToggleAI(true); }}
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 bg-[#f0f9ff] dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-[#0078d4] border border-blue-200 dark:border-blue-800 rounded text-[10px] md:text-xs font-bold shadow-sm transition-all"
-              title="Ask AI (Alt+A)"
-            >
-              <span className="text-xs md:text-sm">🤖</span>
-              <span className="hidden sm:inline">Ask AI</span>
-            </button>
-
-            <div className="h-4 md:h-6 w-px bg-gray-300 dark:bg-gray-700 mx-1"></div>
-
-            {/* Zoom Controls - Part of the scrollable toolbar 'slider' */}
-            <div className="flex items-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-sm overflow-hidden min-w-max">
-              <button
-                onClick={handleZoomOut}
-                className="px-3 py-1 text-[#0078d4] hover:bg-gray-100 dark:hover:bg-gray-700 font-bold border-r border-gray-300 dark:border-gray-600 text-xs transition-colors"
-                title="Zoom Out (Alt+-)"
-              >
-                −
-              </button>
-              <button
-                onClick={handleZoomReset}
-                className="px-2 py-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-[10px] font-black min-w-[40px] border-r border-gray-300 dark:border-gray-600"
-                title="Reset Zoom"
-              >
-                {Math.round((fontSize / 14) * 100)}%
-              </button>
-              <button
-                onClick={handleZoomIn}
-                className="px-3 py-1 text-[#0078d4] hover:bg-gray-100 dark:hover:bg-gray-700 font-bold text-xs transition-colors"
-                title="Zoom In (Alt++)"
-              >
-                +
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -416,12 +365,15 @@ export function QueryEditor({
               <select
                 value={aiModel}
                 onChange={(e) => setAiModel(e.target.value)}
-                className="bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded px-2 py-1 outline-none"
+                className="bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded px-2 py-1 outline-none max-w-[160px] truncate"
               >
-                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
-                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                <option value="gemma2-9b-it">Gemma2 9B</option>
+                {availableModels.length > 0 ? (
+                  availableModels.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))
+                ) : (
+                  <option value={aiModel}>{aiModel} (Loading...)</option>
+                )}
               </select>
             </div>
             
@@ -431,29 +383,37 @@ export function QueryEditor({
               </div>
             )}
 
-            <textarea
-              className="w-full h-24 p-3 bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-700 text-sm outline-none focus:border-[#0078d4] resize-none mb-4 dark:text-gray-200"
-              placeholder="What do you want to do with this query? (e.g., 'Explain this', 'Optimize it', 'Convert to JOIN')"
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Tab') {
-                  e.preventDefault();
-                  const start = e.currentTarget.selectionStart;
-                  const end = e.currentTarget.selectionEnd;
-                  const newValue = aiPrompt.substring(0, start) + '    ' + aiPrompt.substring(end);
-                  setAiPrompt(newValue);
-                  setTimeout(() => {
-                    (e.target as HTMLTextAreaElement).selectionStart = (e.target as HTMLTextAreaElement).selectionEnd = start + 4;
-                  }, 0);
-                }
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleAIAsk();
-                }
-              }}
-              autoFocus
-            />
+            <div className="relative mb-4 flex border border-gray-300 dark:border-gray-700 rounded-md overflow-hidden bg-gray-50 dark:bg-[#1e1e1e] focus-within:border-[#0078d4] focus-within:ring-1 focus-within:ring-[#0078d4]">
+              {/* Line numbers gutter */}
+              <div className="w-8 py-3 bg-gray-200/50 dark:bg-[#2d2d2d] text-gray-400 dark:text-gray-500 text-right pr-2 text-[11px] font-mono select-none flex-shrink-0 border-r border-gray-300 dark:border-gray-700 overflow-hidden">
+                {aiPrompt.split('\n').map((_, i) => (
+                  <div key={i} className="leading-[1.4]">{i + 1}</div>
+                ))}
+              </div>
+              <textarea
+                className="flex-1 w-full p-3 bg-transparent text-sm font-mono outline-none resize-y min-h-[96px] dark:text-gray-200 leading-[1.4]"
+                placeholder="What do you want to do with this query?&#10;(e.g., 'Explain this', 'Optimize it')"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = e.currentTarget.selectionStart;
+                    const end = e.currentTarget.selectionEnd;
+                    const newValue = aiPrompt.substring(0, start) + '    ' + aiPrompt.substring(end);
+                    setAiPrompt(newValue);
+                    setTimeout(() => {
+                      (e.target as HTMLTextAreaElement).selectionStart = (e.target as HTMLTextAreaElement).selectionEnd = start + 4;
+                    }, 0);
+                  }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAIAsk();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
             
             <div className="flex justify-end gap-3">
               <button

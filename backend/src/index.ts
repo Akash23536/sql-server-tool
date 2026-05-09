@@ -5,6 +5,30 @@ import app from './app';
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`
+  🚀 SQL Studio Pro - Server Started
+  ---------------------------------
+  📡 Port: ${PORT}
+  🌍 Mode: ${process.env.NODE_ENV || 'development'}
+  🔗 URL: http://localhost:${PORT}
+  ---------------------------------
+  `);
+});
+
+// Handle Graceful Shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });

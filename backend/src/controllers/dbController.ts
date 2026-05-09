@@ -11,13 +11,15 @@ export const connect = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Server, username and password are required' });
     }
 
+    const portNum = parseInt(port as string) || 1433;
+    console.log(`[SQL] Attempting connection to: ${server}:${portNum} for user: ${username}`);
     const config: ConnectionConfig = {
       server,
-      port: port || 1433,
+      port: portNum,
       user: username,
       password,
       options: {
-        encrypt: false,
+        encrypt: false, // Reverted to false for maximum compatibility
         trustServerCertificate: true,
       },
     };
@@ -28,10 +30,11 @@ export const connect = async (req: Request, res: Response) => {
     setPool(pool);
 
     await pool.query('SELECT 1');
+    console.log('[SQL] Connected successfully');
 
     res.json({ success: true, message: 'Connected successfully' });
   } catch (error: any) {
-    console.error('Connection error:', error.message);
+    console.error('[SQL] Connection error:', error.message);
     res.status(400).json({ success: false, error: error.message });
   }
 };

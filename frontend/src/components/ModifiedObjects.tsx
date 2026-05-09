@@ -104,11 +104,27 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Recently Modified Objects</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => {
+                setObjects([]);
+                setPage(1);
+                setHasMore(false);
+                setTotalCount(0);
+                loadModifiedObjects(1, activeSearchTerm);
+              }}
+              disabled={isLoading || isLoadingMore}
+              className="p-2 text-gray-500 hover:text-[#0078d4] hover:bg-[#0078d4]/10 rounded-lg transition-all"
+              title="Refresh Activity Log"
+            >
+              <svg className={`w-5 h-5 ${(isLoading || isLoadingMore) ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            </button>
+            <button className="close-btn" onClick={onClose}>×</button>
+          </div>
         </div>
 
         <div className="modal-body">
-          <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
+          <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <input
               type="text"
               placeholder="Search modified objects..."
@@ -124,7 +140,7 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
             <button
               onClick={executeSearch}
               disabled={isLoading || isLoadingMore}
-              className="px-3 py-1.5 bg-[#0078d4] hover:bg-[#005a9e] disabled:opacity-50 text-white text-[11px] font-bold rounded shadow-sm transition-colors"
+              className="px-3 py-1.5 bg-[#0078d4] hover:bg-[#005a9e] disabled:opacity-50 text-white text-[11px] font-bold rounded shadow-sm transition-colors whitespace-nowrap"
             >
               Search
             </button>
@@ -139,7 +155,7 @@ export function ModifiedObjects({ database, isOpen, onClose, onAction }: Modifie
                   setTotalCount(0);
                   loadModifiedObjects(1, '');
                 }}
-                className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-[11px] font-bold rounded shadow-sm transition-colors"
+                className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-[11px] font-bold rounded shadow-sm transition-colors whitespace-nowrap"
               >
                 Clear
               </button>
