@@ -579,7 +579,6 @@ function App() {
       });
       if (response.ok) {
         localStorage.setItem('app_aiRole', aiRole);
-        setIsAiRoleEditing(false);
         setScriptStatus({ type: 'success', msg: 'AI Role saved successfully!' });
       } else {
         throw new Error('Failed to save AI role');
@@ -608,7 +607,6 @@ function App() {
         body: JSON.stringify({ aiRole: defaultRole })
       });
       localStorage.setItem('app_aiRole', defaultRole);
-      setIsAiRoleEditing(false);
       setScriptStatus({ type: 'success', msg: 'AI Role reset to default' });
     } catch (error) {
       console.error(error);
