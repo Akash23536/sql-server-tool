@@ -23,6 +23,7 @@
 [data-theme='dark'] {
   --bg-main: #1e1e1e;
   --text-main: #ffffff;
+  color-scheme: dark;
 }
 
 body {

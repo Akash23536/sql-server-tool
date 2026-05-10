@@ -6,12 +6,19 @@ import dbRoutes from './routes/dbRoutes';
 import aiRoutes from './routes/aiRoutes';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
+import adminRoutes from './routes/adminRoutes';
+import passport from 'passport';
+import { configurePassport } from './config/passport';
 import { connectMongoDB } from './config/mongoDb';
 
 const app = express();
 
 // Connect to MongoDB
 connectMongoDB();
+
+// Initialize Passport
+configurePassport();
+app.use(passport.initialize());
 
 // Startup Checks
 if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'your_groq_api_key_here') {
@@ -32,6 +39,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/user', protect, userRoutes);
 app.use('/api/ai', protect, aiRoutes);
+app.use('/api/admin', adminRoutes); // Middleware protection is handled inside adminRoutes
 // Connect dbRoutes to /api/sql or similar? No, keep as /api but specific
 app.use('/api', protect, dbRoutes);
 

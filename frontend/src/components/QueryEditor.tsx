@@ -15,6 +15,11 @@ interface QueryEditorProps {
   queryError?: string | null;
   fontSize: number;
   setFontSize: (size: number | ((prev: number) => number)) => void;
+  aiRole: string;
+  setAiRole: (role: string) => void;
+  onSaveAiRole: () => Promise<void>;
+  onResetAiRole: () => Promise<void>;
+  isSavingAiRole: boolean;
 }
 
 export function QueryEditor({ 
@@ -30,11 +35,17 @@ export function QueryEditor({
   onToggleAI,
   queryError,
   fontSize,
-  setFontSize
+  setFontSize,
+  aiRole,
+  setAiRole,
+  onSaveAiRole,
+  onResetAiRole,
+  isSavingAiRole
 }: QueryEditorProps) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiModel, setAiModel] = useState('llama-3.3-70b-versatile');
   const [isAILoading, setIsAILoading] = useState(false);
+  const [isEditingRole, setIsEditingRole] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [availableModels, setAvailableModels] = useState<{id: string, name: string}[]>([]);
@@ -347,86 +358,126 @@ export function QueryEditor({
         </div>
       </div>
 
-      {/* AI Modal Overlay */}
+      {/* AI Modal Overlay - Minimalistic & Fixed to Viewport */}
       {isAIModalOpen && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-          <div className="bg-white dark:bg-[#252526] w-full max-w-md p-5 border border-gray-300 dark:border-gray-700 shadow-2xl rounded-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🤖</span>
-                <div>
-                  <h3 className="text-sm font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight">Ask Groq AI</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase">SQL Server Expert</p>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-xl border border-slate-200 dark:border-white/10 shadow-2xl rounded-xl overflow-hidden flex flex-col max-h-[95vh] transition-all transform animate-in zoom-in-95 duration-200">
+            
+            <div className="p-5 flex flex-col gap-4">
+              {/* Header - Compact */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Ask AI</h3>
+                    {/* Persona Toggle - Restored Visibility */}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Persona:</span>
+                      {!isEditingRole ? (
+                        <div className="flex items-center gap-1.5 group">
+                          <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold italic">"{aiRole}"</span>
+                          <button 
+                            onClick={() => setIsEditingRole(true)}
+                            className="p-1 hover:bg-slate-100 dark:hover:bg-white/5 rounded text-slate-400 hover:text-blue-500 transition-all"
+                            title="Edit AI Persona"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded border border-blue-500/30">
+                          <input 
+                            autoFocus
+                            value={aiRole}
+                            onChange={(e) => setAiRole(e.target.value)}
+                            className="bg-transparent text-[10px] text-blue-600 dark:text-blue-400 font-bold outline-none w-[150px]"
+                            placeholder="Change persona..."
+                          />
+                          <button 
+                            onClick={async () => { await onSaveAiRole(); setIsEditingRole(false); }}
+                            disabled={isSavingAiRole}
+                            className="text-[9px] font-black text-emerald-600 hover:text-emerald-500"
+                          >
+                            {isSavingAiRole ? '...' : 'OK'}
+                          </button>
+                          <button 
+                            onClick={() => setIsEditingRole(false)}
+                            className="text-[9px] font-black text-slate-400 hover:text-slate-600"
+                          >
+                            X
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <select
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+                >
+                  {availableModels.map(model => (
+                    <option key={model.id} value={model.id} className="bg-slate-900 text-white">
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Minimalist Input Area */}
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  className="w-full p-3 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-lg text-xs font-mono outline-none resize-y min-h-[100px] dark:text-slate-200 focus:border-blue-500/50 transition-all placeholder:text-slate-400"
+                  placeholder="Describe your SQL request... (e.g. 'Explain this', 'Optimize it')"
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAIAsk(); }
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              {queryError && (
+                <div className="text-[10px] text-red-500 font-mono bg-red-500/5 p-2 rounded border border-red-500/10 truncate">
+                  Error Context: {queryError.substring(0, 100)}...
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-2">
+                  {aiRole !== 'SQL Server Expert' && !isEditingRole && (
+                    <button onClick={() => onResetAiRole()} className="text-[9px] text-slate-400 hover:text-red-500 font-bold uppercase transition-colors">Reset Role</button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { onToggleAI(false); setAiPrompt(''); }}
+                    className="text-[10px] font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 uppercase"
+                    disabled={isAILoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAIAsk}
+                    disabled={isAILoading || !aiPrompt.trim()}
+                    className={`px-5 py-2 text-[10px] font-black rounded-lg uppercase tracking-widest shadow-lg transition-all ${
+                      isAILoading || !aiPrompt.trim() 
+                        ? 'bg-slate-100 dark:bg-white/5 text-slate-400' 
+                        : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
+                    }`}
+                  >
+                    {isAILoading ? 'Working...' : 'Run AI'}
+                  </button>
                 </div>
               </div>
-              <select
-                value={aiModel}
-                onChange={(e) => setAiModel(e.target.value)}
-                className="bg-gray-50 dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded px-2 py-1 outline-none max-w-[160px] truncate"
-              >
-                {availableModels.length > 0 ? (
-                  availableModels.map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))
-                ) : (
-                  <option value={aiModel}>{aiModel} (Loading...)</option>
-                )}
-              </select>
-            </div>
-            
-            {queryError && (
-              <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded text-xs text-red-600 dark:text-red-400 font-mono">
-                <span className="font-bold">ErrorContext:</span> {queryError.substring(0, 150)}{queryError.length > 150 ? '...' : ''}
-              </div>
-            )}
-
-            <div className="relative mb-4 flex border border-gray-300 dark:border-gray-700 rounded-md overflow-hidden bg-gray-50 dark:bg-[#1e1e1e] focus-within:border-[#0078d4] focus-within:ring-1 focus-within:ring-[#0078d4]">
-              {/* Line numbers gutter */}
-              <div className="w-8 py-3 bg-gray-200/50 dark:bg-[#2d2d2d] text-gray-400 dark:text-gray-500 text-right pr-2 text-[11px] font-mono select-none flex-shrink-0 border-r border-gray-300 dark:border-gray-700 overflow-hidden">
-                {aiPrompt.split('\n').map((_, i) => (
-                  <div key={i} className="leading-[1.4]">{i + 1}</div>
-                ))}
-              </div>
-              <textarea
-                className="flex-1 w-full p-3 bg-transparent text-sm font-mono outline-none resize-y min-h-[96px] dark:text-gray-200 leading-[1.4]"
-                placeholder="What do you want to do with this query?&#10;(e.g., 'Explain this', 'Optimize it')"
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Tab') {
-                    e.preventDefault();
-                    const start = e.currentTarget.selectionStart;
-                    const end = e.currentTarget.selectionEnd;
-                    const newValue = aiPrompt.substring(0, start) + '    ' + aiPrompt.substring(end);
-                    setAiPrompt(newValue);
-                    setTimeout(() => {
-                      (e.target as HTMLTextAreaElement).selectionStart = (e.target as HTMLTextAreaElement).selectionEnd = start + 4;
-                    }, 0);
-                  }
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAIAsk();
-                  }
-                }}
-                autoFocus
-              />
-            </div>
-            
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { onToggleAI(false); setAiPrompt(''); }}
-                className="px-4 py-1.5 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase"
-                disabled={isAILoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAIAsk}
-                disabled={isAILoading || !aiPrompt.trim()}
-                className={`px-6 py-1.5 text-xs font-black rounded uppercase tracking-tighter shadow-md ${isAILoading || !aiPrompt.trim() ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0078d4] text-white hover:bg-[#005a9e]'}`}
-              >
-                {isAILoading ? 'Thinking...' : 'Submit'}
-              </button>
             </div>
           </div>
         </div>

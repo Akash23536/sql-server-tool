@@ -10,6 +10,7 @@ import { ObjectCompare } from './components/ObjectCompare';
 import { ExcelTool } from './components/ExcelTool';
 import { Sidebar } from './components/Sidebar';
 import { Auth } from './components/Auth';
+import AdminPanel from './components/AdminPanel';
 import {
   connectToServer,
   getDatabases,
@@ -46,6 +47,8 @@ function App() {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('app_authToken'));
   const [authUser, setAuthUser] = useState<string | null>(() => localStorage.getItem('app_authUser'));
+  const [authRole, setAuthRole] = useState<number>(() => parseInt(localStorage.getItem('app_authRole') || '0'));
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'servers' | 'objects'>('servers');
 
   // Auto-reconnect on page reload using saved session
@@ -127,6 +130,18 @@ function App() {
   const [editorFontSize, setEditorFontSize] = useState(14);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [scriptStatus, setScriptStatus] = useState<{ type: 'loading' | 'success' | 'error', msg: string } | null>(null);
+  const [aiRole, setAiRole] = useState(() => localStorage.getItem('app_aiRole') || 'SQL Server Expert');
+  const [isAiRoleEditing, setIsAiRoleEditing] = useState(false);
+  const [isSavingAiRole, setIsSavingAiRole] = useState(false);
+
+  // Auto-hide script status after 3 seconds
+  useEffect(() => {
+    if (scriptStatus && scriptStatus.type !== 'loading') {
+      const timer = setTimeout(() => setScriptStatus(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [scriptStatus]);
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('sql_lastDb', selectedDatabase); }, [selectedDatabase]);
@@ -372,11 +387,14 @@ function App() {
     }
 
     if (selectedDatabase) {
+      setScriptStatus({ type: 'loading', msg: `Generating ${action} script for ${obj.objectName}...` });
       try {
         const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action, obj.schemaName);
-        setQuery(script); // Force update query directly
+        setQuery(script);
+        setScriptStatus({ type: 'success', msg: 'Script generated successfully!' });
       } catch (error: any) {
         setQuery('Failed to load script');
+        setScriptStatus({ type: 'error', msg: 'Failed to generate script.' });
       }
     }
   };
@@ -397,11 +415,14 @@ function App() {
 
       await loadObjects(selectedDatabase, filterType, 1, pageSize, obj.objectName);
       if (action !== 'highlight') {
+        setScriptStatus({ type: 'loading', msg: `Generating ${action} script...` });
         try {
           const script = await getObjectScript(selectedDatabase, obj.objectName, obj.objectType, action, obj.schemaName);
-          setQuery(script); // Force update query directly
+          setQuery(script);
+          setScriptStatus({ type: 'success', msg: 'Script generated successfully!' });
         } catch (error: any) {
           setQuery('Failed to load script');
+          setScriptStatus({ type: 'error', msg: 'Failed to generate script.' });
         }
       }
     }
@@ -516,26 +537,86 @@ function App() {
     keysToRemove.forEach(k => localStorage.removeItem(k));
   };
 
-  const handleAppLogin = (token: string, username: string) => {
+  const handleAppLogin = (token: string, username: string, role?: number, aiRoleParam?: string) => {
     // Clear previous SQL session data on new login
     clearSqlStorage();
     
     localStorage.setItem('app_authToken', token);
     localStorage.setItem('app_authUser', username);
+    localStorage.setItem('app_authRole', role?.toString() || '0');
+    if (aiRoleParam) {
+      localStorage.setItem('app_aiRole', aiRoleParam);
+      setAiRole(aiRoleParam);
+    }
     setAuthToken(token);
     setAuthUser(username);
+    setAuthRole(role || 0);
   };
 
   const handleAppLogout = () => {
     localStorage.removeItem('app_authToken');
     localStorage.removeItem('app_authUser');
+    localStorage.removeItem('app_authRole');
     clearSqlStorage();
     
     setAuthToken(null);
     setAuthUser(null);
+    setAuthRole(0);
+    setAiRole('SQL Server Expert');
     handleDisconnect(); // also disconnect from SQL
   };
+ 
+  const handleSaveAiRole = async () => {
+    if (!authToken) return;
+    setIsSavingAiRole(true);
+    try {
+      const response = await fetch('/api/user/ai-role', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ aiRole })
+      });
+      if (response.ok) {
+        localStorage.setItem('app_aiRole', aiRole);
+        setIsAiRoleEditing(false);
+        setScriptStatus({ type: 'success', msg: 'AI Role saved successfully!' });
+      } else {
+        throw new Error('Failed to save AI role');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setScriptStatus({ type: 'error', msg: 'Failed to save AI Role' });
+    } finally {
+      setIsSavingAiRole(false);
+    }
+  };
 
+  const handleResetAiRole = async () => {
+    const defaultRole = 'SQL Server Expert';
+    setAiRole(defaultRole);
+    // If we want to auto-save on reset:
+    if (!authToken) return;
+    setIsSavingAiRole(true);
+    try {
+      await fetch('/api/user/ai-role', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ aiRole: defaultRole })
+      });
+      localStorage.setItem('app_aiRole', defaultRole);
+      setIsAiRoleEditing(false);
+      setScriptStatus({ type: 'success', msg: 'AI Role reset to default' });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSavingAiRole(false);
+    }
+  };
 
   if (!authToken) {
     return <Auth onLogin={handleAppLogin} />;
@@ -613,7 +694,20 @@ function App() {
             </select>
           </div>
 
-          <div className="h-4 w-px bg-gray-300 dark:bg-gray-700 mx-1"></div>
+            {authRole >= 1 && (
+              <button
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-lg text-[11px] font-black uppercase tracking-widest shadow-lg shadow-indigo-500/20 transition-all active:scale-95 group"
+                title="Open Admin Dashboard"
+              >
+                <svg className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-2.533-4.656 6.853 6.853 0 01-5.137 0 4.125 4.125 0 00-2.533 4.656 9.337 9.337 0 004.121.952zm-3.128-4.594A4.125 4.125 0 1115 15.334a4.125 4.125 0 01-3.128-4.594zM2.25 12c0 1.574.313 3.076.88 4.45l-1.547 4.16a.75.75 0 00.957.958l4.16-1.547c1.374.567 2.876.88 4.45.88a9.75 9.75 0 009.034-6.034.75.75 0 00-.067-.655 9.75 9.75 0 00-6.034-9.034.75.75 0 00-.655.067c-1.374.567-2.876.88-4.45.88A9.75 9.75 0 002.25 12z" />
+                </svg>
+                <span>Admin</span>
+              </button>
+            )}
+
+            <div className="h-4 w-px bg-slate-300 dark:bg-white/10 mx-1"></div>
 
           {/* Results Toggle */}
           <button 
@@ -794,6 +888,11 @@ function App() {
                   onToggleAI={setIsAIModalOpen}
                   fontSize={editorFontSize}
                   setFontSize={setEditorFontSize}
+                  aiRole={aiRole}
+                  setAiRole={setAiRole}
+                  onSaveAiRole={handleSaveAiRole}
+                  onResetAiRole={handleResetAiRole}
+                  isSavingAiRole={isSavingAiRole}
                   onShowAIResult={(msg) => {
                     setQueryResult(null);
                     setQueryError(null);
@@ -1057,6 +1156,33 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+      {/* Script Generation Notification */}
+      {scriptStatus && (
+        <div className="fixed bottom-6 right-6 z-[2000] animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md ${
+            scriptStatus.type === 'loading' ? 'bg-blue-600/90 border-blue-400 text-white' :
+            scriptStatus.type === 'success' ? 'bg-emerald-600/90 border-emerald-400 text-white' :
+            'bg-red-600/90 border-red-400 text-white'
+          }`}>
+            {scriptStatus.type === 'loading' ? (
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            ) : scriptStatus.type === 'success' ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="text-[11px] font-black uppercase tracking-widest">{scriptStatus.msg}</span>
+          </div>
+        </div>
+      )}
+      {/* Admin Panel Modal */}
+      {isAdminPanelOpen && (
+        <AdminPanel onClose={() => setIsAdminPanelOpen(false)} />
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../middleware/authMiddleware';
 import SavedConnection from '../models/SavedConnection';
+import User from '../models/User';
 
 export const saveConnection = async (req: AuthRequest, res: Response) => {
   // Check if MongoDB is connected
@@ -44,16 +45,8 @@ export const saveConnection = async (req: AuthRequest, res: Response) => {
 export const getSavedConnections = async (req: AuthRequest, res: Response) => {
   // Check if MongoDB is connected
   if (mongoose.connection.readyState !== 1) {
-    console.log('DB disconnected, returning mock list');
-    return res.json([
-      {
-        _id: 'mock_conn_1',
-        name: 'Demo Production Server',
-        server: '5.175.139.84',
-        port: 2006,
-        username: 'sa'
-      }
-    ]);
+    console.log('DB disconnected, returning empty list');
+    return res.json([]);
   }
 
   try {
@@ -125,6 +118,20 @@ export const deleteConnection = async (req: AuthRequest, res: Response) => {
     }
 
     res.json({ message: 'Connection deleted' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+export const updateAiRole = async (req: AuthRequest, res: Response) => {
+  try {
+    const { aiRole } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.aiRole = aiRole || 'SQL Server Expert';
+    await user.save();
+
+    res.json({ aiRole: user.aiRole });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

@@ -279,3 +279,191 @@ export const getAIModels = async (): Promise<{ id: string; name: string }[]> => 
   }
   return response.json();
 };
+
+// --- Admin APIs ---
+
+export interface AdminUser {
+  _id: string;
+  username: string;
+  email: string;
+  role: number;
+  aiRole: string;
+  createdAt: string;
+}
+
+export interface AdminLog {
+  _id: string;
+  userId: {
+    _id: string;
+    username: string;
+    email: string;
+  } | string;
+  action: string;
+  details: string;
+  ipAddress?: string;
+  createdAt: string;
+}
+
+// Get all users (Admin)
+export const adminGetUsers = async (): Promise<AdminUser[]> => {
+  const response = await fetch(`${API_BASE}/admin/users`, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch users');
+  }
+  return response.json();
+};
+
+// Create a new user (Admin)
+export const adminCreateUser = async (userData: any): Promise<AdminUser> => {
+  const response = await fetch(`${API_BASE}/admin/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(userData),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create user');
+  }
+  return response.json();
+};
+
+// Get all audit logs (Admin)
+export const adminGetLogs = async (): Promise<AdminLog[]> => {
+  const response = await fetch(`${API_BASE}/admin/logs`, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch logs');
+  }
+  return response.json();
+};
+
+// Update user (Admin)
+export const adminUpdateUser = async (id: string, userData: Partial<AdminUser>): Promise<AdminUser> => {
+  const response = await fetch(`${API_BASE}/admin/users/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(userData),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update user');
+  }
+  return response.json();
+};
+
+// Reset password (Admin)
+export const adminResetPassword = async (id: string, newPassword: string): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE}/admin/users/${id}/reset-password`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ newPassword }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to reset password');
+  }
+  return response.json();
+};
+
+// Delete user (Admin)
+export const adminDeleteUser = async (id: string): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE}/admin/users/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete user');
+  }
+  return response.json();
+};
+
+// --- User Drill-down APIs (Admin) ---
+
+// Get saved connections for a specific user
+export const adminGetUserConnections = async (userId: string): Promise<any[]> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/connections`, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch user connections');
+  }
+  return response.json();
+};
+
+// Add a connection for a user
+export const adminAddUserConnection = async (userId: string, data: any): Promise<any> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/connections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to add user connection');
+  }
+  return response.json();
+};
+
+// Update a specific user's connection
+export const adminUpdateUserConnection = async (userId: string, connectionId: string, data: any): Promise<any> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/connections/${connectionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update user connection');
+  }
+  return response.json();
+};
+
+// Delete a specific user's connection
+export const adminDeleteUserConnection = async (userId: string, connectionId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/connections/${connectionId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete user connection');
+  }
+  return response.json();
+};
+
+// Get audit logs for a specific user
+export const adminGetUserLogs = async (userId: string): Promise<AdminLog[]> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/logs`, { headers: getAuthHeaders() });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch user logs');
+  }
+  return response.json();
+};
+
+// Delete a single log entry
+export const adminDeleteUserLog = async (userId: string, logId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/logs/${logId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete log entry');
+  }
+  return response.json();
+};
+
+// Clear all logs for a user
+export const adminClearUserLogs = async (userId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/logs`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to clear user logs');
+  }
+  return response.json();
+};

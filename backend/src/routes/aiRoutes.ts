@@ -1,14 +1,20 @@
 import { Router, Request, Response } from 'express';
+import { protect, AuthRequest } from '../middleware/authMiddleware';
+import User from '../models/User';
 
 const router = Router();
 
-router.post('/ask', async (req: Request, res: Response) => {
+router.post('/ask', protect, async (req: AuthRequest, res: Response) => {
   const { query, prompt, error, model } = req.body;
   const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey || apiKey === 'your_groq_api_key_here') {
     return res.status(401).json({ error: 'Groq API key not configured in backend .env file' });
   }
+
+  // Fetch fresh user data to get the current aiRole
+  const user = await User.findById(req.user.id);
+  const systemRole = user?.aiRole || 'You are a SQL Server expert assistant. Help the user with their SQL queries. Return ONLY the SQL code if a query is requested, or a concise explanation if asked for analysis.';
 
   const userContent = `SQL Query:\n${query}\n\n${error ? `Execution Error:\n${error}\n\n` : ''}User Request: ${prompt}`;
 
@@ -24,7 +30,7 @@ router.post('/ask', async (req: Request, res: Response) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a SQL Server expert assistant. Help the user with their SQL queries. Return ONLY the SQL code if a query is requested, or a concise explanation if asked for analysis.'
+            content: systemRole
           },
           {
             role: 'user',

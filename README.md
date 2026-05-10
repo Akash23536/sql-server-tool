@@ -13,6 +13,7 @@ Live Demo: [https://sql-server-tool.onrender.com/](https://sql-server-tool.onren
 - **Glassmorphism Design:** Modern aesthetics with curated HSL colors, smooth transitions, and dark mode support.
 - **Mobile Responsive:** Fully functional on mobile with touch-to-drag drawer support and responsive sidebars.
 - **Micro-Animations:** Interactive hover effects and haptic feedback (on supported devices).
+- **Dark Mode Optimized:** Global `color-scheme` support for consistent dark-themed native elements (dropdowns, scrolls).
 
 ### 🔍 Advanced Object Explorer
 - **Deep Search:** Search for any text, keyword, or dependency inside the code of Stored Procedures, Views, Triggers, and Agent Jobs.
@@ -30,6 +31,14 @@ Live Demo: [https://sql-server-tool.onrender.com/](https://sql-server-tool.onren
 - **Smart Results Drawer:** Resizable, touch-responsive drawer that doesn't overlap your code.
 - **Excel Tool:** Export query results or database tables directly to Excel files, and import data back into SQL Server.
 - **History & Undo:** Full history of your recent queries with undo/redo capabilities.
+
+### 🛡️ Administrative Command Center (NEW)
+- **Full Control Dashboard:** Centralized panel to manage users, roles, and system records.
+- **User Drill-down:** Click any user to inspect their private connections and individual activity logs.
+- **Connection Management**: Admins can view, add, or modify saved SQL credentials for any user.
+- **Security Audit Overhaul**: Granular log management—delete specific entries or purge entire user histories.
+- **Account Management**: Add new users or edit existing JSON profiles (Username, Email, Role, AI Persona).
+- **Emergency Override**: Admin-level password reset with visibility toggles for secure verification.
 
 ---
 

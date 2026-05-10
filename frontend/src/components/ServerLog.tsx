@@ -28,9 +28,9 @@ export const ServerLog = ({
   const [isAdding, setIsAdding] = useState(false);
 
   // Form states for adding new connection
-  const [newName, setNewName] = useState('Production SQL');
-  const [newServer, setNewServer] = useState('5.175.139.84');
-  const [newPort, setNewPort] = useState('2006');
+  const [newName, setNewName] = useState('');
+  const [newServer, setNewServer] = useState('');
+  const [newPort, setNewPort] = useState('1433');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [rememberLogin] = useState(true);
@@ -39,6 +39,12 @@ export const ServerLog = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleAddSubmit(e as any);
+    }
+  };
 
   const fetchSavedConnections = async () => {
     const token = localStorage.getItem('app_authToken');
@@ -219,32 +225,32 @@ export const ServerLog = ({
       {isAdding ? (
         <div className="flex-1 overflow-y-auto p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500">{editingId ? 'Edit Server' : 'Add Server'}</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-700 dark:text-gray-400">{editingId ? 'Edit Server' : 'Add Server'}</h3>
             <button onClick={() => setIsAdding(false)} className="text-[10px] font-bold text-blue-500 uppercase">Back</button>
           </div>
           <div className="space-y-4">
             {/* Extremely aggressive anti-autofill: No <form> tag, readOnly fields that unlock on focus */}
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Name</label>
-              <input required value={newName} onChange={e => setNewName(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+              <label className="text-[9px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest">Name</label>
+              <input required value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={handleKeyDown} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs text-gray-900 dark:text-gray-100 outline-none" />
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Server</label>
-              <input required value={newServer} onChange={e => setNewServer(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+              <label className="text-[9px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest">Server</label>
+              <input required value={newServer} onChange={e => setNewServer(e.target.value)} onKeyDown={handleKeyDown} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs text-gray-900 dark:text-gray-100 outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Port</label>
-                <input required value={newPort} onChange={e => setNewPort(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+                <label className="text-[9px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest">Port</label>
+                <input required value={newPort} onChange={e => setNewPort(e.target.value)} onKeyDown={handleKeyDown} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs text-gray-900 dark:text-gray-100 outline-none" />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">User</label>
-                <input required name="sql_user_field_unique" autoComplete="new-password" value={newUsername} onChange={e => setNewUsername(e.target.value)} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none" />
+                <label className="text-[9px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest">User</label>
+                <input required name="sql_user_field_unique" autoComplete="new-password" value={newUsername} onChange={e => setNewUsername(e.target.value)} onKeyDown={handleKeyDown} readOnly onFocus={e => e.target.removeAttribute('readonly')} className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs text-gray-900 dark:text-gray-100 outline-none" />
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Password</label>
+              <label className="text-[9px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest">Password</label>
               <div className="relative">
                 <input 
                   required 
@@ -255,7 +261,8 @@ export const ServerLog = ({
                   onChange={e => setNewPassword(e.target.value)} 
                   readOnly 
                   onFocus={e => e.target.removeAttribute('readonly')}
-                  className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs outline-none pr-8" 
+                  onKeyDown={handleKeyDown}
+                  className="w-full px-2 py-1.5 bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-[#333] rounded text-xs text-gray-900 dark:text-gray-100 outline-none pr-8" 
                 />
                 <button
                   type="button"
@@ -286,7 +293,7 @@ export const ServerLog = ({
       ) : (
         <div className="flex flex-col h-full overflow-hidden">
           <div className="flex items-center justify-between p-4 px-5">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Saved Server Connection</span>
+            <span className="text-[10px] font-black text-gray-600 dark:text-gray-400 uppercase tracking-widest">Saved Server Connection</span>
             <button 
               onClick={() => { setIsAdding(true); setEditingId(null); setTestStatus('idle'); }}
               className="p-1 bg-[#0078d4] text-white rounded hover:bg-[#0062af] transition-all"
@@ -307,8 +314,8 @@ export const ServerLog = ({
                 <div key={conn._id} className={`p-3 rounded border transition-all ${(isActive || isPending) ? 'bg-blue-500/10 border-blue-500' : 'bg-white dark:bg-[#252526] border-gray-200 dark:border-[#333]'}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col">
-                      <span className={`text-[10px] font-black uppercase tracking-tight ${(isActive || isPending) ? 'text-blue-500' : 'text-gray-700 dark:text-gray-200'}`}>{conn.name}</span>
-                      <span className="text-[8px] text-gray-500 uppercase">{conn.server}:{conn.port}</span>
+                      <span className={`text-[10px] font-black uppercase tracking-tight ${(isActive || isPending) ? 'text-blue-500' : 'text-gray-800 dark:text-gray-200'}`}>{conn.name}</span>
+                      <span className="text-[8px] text-gray-700 dark:text-gray-400 uppercase">{conn.server}:{conn.port}</span>
                     </div>
                     <div className="flex gap-1">
                       {deletingId === (conn._id || (conn as any).id) ? (
@@ -343,7 +350,7 @@ export const ServerLog = ({
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-[8px] text-gray-400 uppercase">User: <span className="font-bold text-gray-600 dark:text-gray-400">{conn.username}</span></span>
+                    <span className="text-[8px] text-gray-500 dark:text-gray-400 uppercase">User: <span className="font-bold text-gray-700 dark:text-gray-300">{conn.username}</span></span>
                     {!isActive ? (
                       <button 
                         onClick={() => handleConnectInList(conn)} 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 interface AuthProps {
-  onLogin: (token: string, username: string) => void;
+  onLogin: (token: string, username: string, role?: number, aiRole?: string) => void;
 }
 
 export const Auth = ({ onLogin }: AuthProps) => {
@@ -23,6 +23,20 @@ export const Auth = ({ onLogin }: AuthProps) => {
       .then(data => setDbStatus(data.status))
       .catch(() => setDbStatus('disconnected'));
   }, [API_BASE]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const username = params.get("username");
+    const role = params.get("role");
+    const aiRole = params.get("aiRole");
+
+    if (token && username) {
+      onLogin(token, username, role ? parseInt(role) : undefined, aiRole || undefined);
+      // Clean up URL without reload
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [onLogin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +69,7 @@ export const Auth = ({ onLogin }: AuthProps) => {
       }
 
       // Successful auth
-      onLogin(data.token, data.username);
+      onLogin(data.token, data.username, data.role, data.aiRole);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -120,8 +134,17 @@ export const Auth = ({ onLogin }: AuthProps) => {
 
         {dbStatus === 'disconnected' && !error && (
           <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/50 text-amber-200 text-xs leading-relaxed">
-            <div className="font-bold uppercase tracking-widest text-amber-500 mb-1">Connection Issue</div>
-            The system cannot reach MongoDB Atlas. Please ensure your IP is whitelisted or use <strong>Guest Access</strong> below for testing.
+            <div className="font-bold uppercase tracking-widest text-amber-500 mb-1 flex items-center gap-2">
+              <span className="animate-ping w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              Connection Issue
+            </div>
+            The system cannot reach MongoDB Atlas. 
+            <ul className="mt-2 space-y-1 list-disc list-inside text-amber-400/80">
+              <li>Log in to <strong>MongoDB Atlas</strong></li>
+              <li>Go to <strong>Network Access</strong></li>
+              <li>Add <strong>0.0.0.0/0</strong> (Allow All) or your current IP</li>
+            </ul>
+            <p className="mt-2 italic">Or use <strong>Guest Access</strong> below to test without a database.</p>
           </div>
         )}
 
@@ -245,7 +268,7 @@ export const Auth = ({ onLogin }: AuthProps) => {
                     body: JSON.stringify({ email: 'admin@example.com', password: 'admin123' }),
                   });
                   const data = await response.json();
-                  if (response.ok) onLogin(data.token, data.username);
+                  if (response.ok) onLogin(data.token, data.username, data.role);
                   else throw new Error(data.error || "Guest login failed");
                 } catch (err: any) {
                   setError(err.message);
@@ -263,8 +286,9 @@ export const Auth = ({ onLogin }: AuthProps) => {
             </button>
 
             <button 
-              onClick={() => alert("Google Login would be configured here with a Client ID.")}
+              onClick={() => window.location.href = `${API_BASE}/google`}
               className="flex items-center justify-center py-2 md:py-2.5 px-4 border border-slate-700 rounded-xl hover:bg-slate-700/50 transition-all group"
+              title="Sign in with Google"
             >
               <svg className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -275,8 +299,9 @@ export const Auth = ({ onLogin }: AuthProps) => {
             </button>
 
             <button 
-              onClick={() => alert("GitHub Login would be configured here with a Client ID.")}
+              onClick={() => window.location.href = `${API_BASE}/github`}
               className="flex items-center justify-center py-2 md:py-2.5 px-4 border border-slate-700 rounded-xl hover:bg-slate-700/50 transition-all group"
+              title="Sign in with GitHub"
             >
               <svg className="w-4 h-4 md:w-5 md:h-5 text-white group-hover:scale-110 transition-transform" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>

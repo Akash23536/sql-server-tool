@@ -329,7 +329,7 @@ export const ObjectBrowser = memo(({
             onChange={(e) => onObjectTypeFilter(e.target.value as ObjectTypeFilter)}
           >
             {OBJECT_TYPE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value} className="bg-white dark:bg-gray-800">{opt.label.toUpperCase()}</option>
+              <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-900 dark:text-white">{opt.label.toUpperCase()}</option>
             ))}
           </select>
         </div>
@@ -369,7 +369,7 @@ export const ObjectBrowser = memo(({
               <div
                 key={`${obj.schemaName}-${obj.objectType}-${obj.objectName}`}
                 className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 cursor-pointer text-[10px] md:text-xs transition-colors ${selectedObject?.objectName === obj.objectName ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100' : 'hover:bg-gray-200 dark:hover:bg-white/5 dark:text-gray-300'}`}
-                onClick={() => onSelectObject(obj, 'select')}
+                onClick={() => onSelectObject(obj, 'highlight')}
                 onContextMenu={(e) => handleContextMenu(e, obj)}
               >
                 <span className={`w-4 h-4 md:w-5 md:h-5 flex items-center justify-center text-[7px] md:text-[8px] font-black rounded border border-gray-300 dark:border-gray-600 ${selectedObject?.objectName === obj.objectName ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>

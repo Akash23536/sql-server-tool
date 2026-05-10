@@ -5,8 +5,8 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import AuditLog from '../models/AuditLog';
 
-const generateToken = (id: string) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', {
+const generateToken = (id: string, role: number) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET || 'secret', {
     expiresIn: '30d',
   });
 };
@@ -49,7 +49,9 @@ export const registerUser = async (req: Request, res: Response) => {
         _id: user._id,
         username: user.username,
         email: user.email,
-        token: generateToken(user._id.toString()),
+        aiRole: user.aiRole,
+        role: user.role,
+        token: generateToken(user._id.toString(), user.role),
       });
     } else {
       res.status(400).json({ error: 'Invalid user data' });
@@ -72,7 +74,8 @@ export const loginUser = async (req: Request, res: Response) => {
         _id: mockId,
         username: 'Admin (Dev)',
         email: 'admin@example.com',
-        token: jwt.sign({ id: mockId }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' }),
+        role: 1, // Admin in dev mode
+        token: jwt.sign({ id: mockId, role: 1 }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' }),
       });
     }
 
@@ -86,7 +89,7 @@ export const loginUser = async (req: Request, res: Response) => {
 
     const user = await User.findOne({ email });
 
-    if (user && (await bcrypt.compare(password, user.passwordHash))) {
+    if (user && user.passwordHash && (await bcrypt.compare(password, user.passwordHash))) {
       // Create audit log
       await AuditLog.create({
         userId: user._id,
@@ -99,12 +102,36 @@ export const loginUser = async (req: Request, res: Response) => {
         _id: user._id,
         username: user.username,
         email: user.email,
-        token: generateToken(user._id.toString()),
+        aiRole: user.aiRole,
+        role: user.role,
+        token: generateToken(user._id.toString(), user.role),
       });
     } else {
       res.status(401).json({ error: 'Invalid email or password' });
     }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+};
+export const socialLoginSuccess = async (req: any, res: Response) => {
+  try {
+    const user = req.user;
+    
+    // Create audit log
+    await AuditLog.create({
+      userId: user._id,
+      action: 'LOGIN_OAUTH',
+      details: `User logged in via ${user.googleId ? 'Google' : 'GitHub'}`,
+      ipAddress: req.ip
+    });
+
+    const token = generateToken(user._id.toString(), user.role);
+    
+    // Redirect back to frontend with token
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}?token=${token}&username=${user.username}&aiRole=${encodeURIComponent(user.aiRole)}&role=${user.role}`);
+  } catch (error: any) {
+    console.error('Social login success error:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=auth_failed`);
   }
 };
