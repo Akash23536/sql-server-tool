@@ -222,7 +222,10 @@ export const executeQuery = async (database: string, query: string, signal?: Abo
 
 // Disconnect
 export const disconnect = async (): Promise<void> => {
-  await fetch(`${API_BASE}/disconnect`, { method: 'POST' });
+  await fetch(`${API_BASE}/disconnect`, { 
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
 };
 
 // Get modified objects
