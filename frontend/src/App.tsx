@@ -132,7 +132,6 @@ function App() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [scriptStatus, setScriptStatus] = useState<{ type: 'loading' | 'success' | 'error', msg: string } | null>(null);
   const [aiRole, setAiRole] = useState(() => localStorage.getItem('app_aiRole') || 'SQL Server Expert');
-  const [isAiRoleEditing, setIsAiRoleEditing] = useState(false);
   const [isSavingAiRole, setIsSavingAiRole] = useState(false);
 
   // Auto-hide script status after 3 seconds
