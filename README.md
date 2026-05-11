@@ -2,7 +2,7 @@
 
 A premium, SSMS-inspired web-based SQL Server management tool designed for speed, beauty, and efficiency. Built with React, Node.js, and Groq AI.
 
-Live Demo: [https://sql-server-tool.onrender.com/](https://sql-server-tool.onrender.com/)
+Live Demo: [https://sql-server-tool.onrender.com/]
 
 ---
 
