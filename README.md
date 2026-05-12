@@ -4,7 +4,6 @@ A premium, SSMS-inspired web-based SQL Server management tool designed for speed
 
 Live Demo: [https://sql-server-tool.onrender.com/]
 
----
 
 ## ✨ Modern Features
 
